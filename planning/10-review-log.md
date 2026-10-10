@@ -83,4 +83,13 @@ D-01~D-05（建议默认值已备）、C-1~C-6 处理意见、A-1~A-6 假设（�
 - **遗留待办（会话 2）**：T1-07~T1-12（前端 React+AntD、T1-11 备份脚本与 backup 服务、T1-12 阶段报告）；前端暂为占位页（NFR-03 合规）。
 - **风险更新**：R-05 镜像源不稳定风险实锤（本次两次 EOF）；应对：后台构建含重试（`until docker pull` ×5）。此风险由用户侧镜像源决定，建议用户后续更换更稳的镜像或启用代理。
 
+### 阶段 1 · 会话 2（T1-07 ~ T1-12）— 2026-10-10
+
+- **完成任务**：T1-07 前端框架（Vite+React+TS+antd v5+Router+布局，侧边栏“后续模块待开发”禁用）；T1-08 项目列表（搜索/筛选/排序/分页）+详情页（模块待开发卡）；T1-09 新建/编辑/归档/删除确认 UI；T1-10 app_settings 模型+API+迁移 0002+设置页；T1-11 备份/恢复脚本+backup 服务（profile）；T1-12 阶段 1 验收报告。
+- **验证证据**：`docker compose ps` 三服务 healthy；`alembic current`=0002(head)；pytest **14 passed**；备份恢复演练通过（恢复库项目数=1）；前端生产构建通过；Playwright 界面截图 5 张（列表 2 条/新建弹窗/详情/设置 5 配置键）。
+- **修复缺陷（4+1 处，均回归验证）**：compose backup 服务缩进；前端 TS（重复 buildQuery/ArchiveOutlined 不存在/未用导入）；后端 settings 变量遮蔽模块（AttributeError）；frontend 健康检查 IPv6 解析（nginx 双栈+127.0.0.1）；PS Set-Content 引入 UTF-8 BOM 破坏 YAML（后续统一用 [IO.File]::WriteAllText UTF8 无 BOM）。
+- **估算偏差**：T1-07~T1-12 计划 8.5-13.5h，实际净投入约 7-8h（含缺陷修复）；累计本阶段 1 计划 17-27h，实际约 12-13h。偏差来源：未预料的 compose 缩进/BOM/antd 图标名/路由遮蔽等一次性坑（已沉淀为脚本模板与代码检查清单）。
+- **新经验（写入第 2 节候选）**：antd v5 图标名与 v6 不同（ArchiveOutlined 不存在→InboxOutlined）；PowerShell Set-Content -Encoding utf8 会写 BOM 破坏 YAML；`docker compose config -q` 是任何 compose 改动的第一道门禁。
+- **待办**：阶段 2 T2-01~T2-15（D-02 ECharts 已定；T2-09 gantt Spike 先行）。
+
 > 模板：阶段号 / 验收日期 / 通过项 / 缺陷与修复 / 返工原因 / 拆解改进 / 估算偏差记录。届时由 TeleAgent 在各阶段验收后追加，并据实更新第 2 节经验状态。
