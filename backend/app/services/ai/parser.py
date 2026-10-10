@@ -64,6 +64,9 @@ def validate_wbs_draft(payload: dict, max_tasks: int = 200) -> list[dict]:
             raise AIParseError("validation", "任务条目格式不正确")
         name = _require_str(item, "name", "任务名称")
         wbs = str(item.get("wbs", "")) or str(item.get("code", ""))
+        parent_wbs = str(item.get("parent_wbs") or "") or None
+        if parent_wbs and parent_wbs not in seen_wbs:
+            raise AIParseError("validation", f"父 WBS 不存在：{parent_wbs}")
         plan_start = _require_date_opt(item, "plan_start")
         plan_end = _require_date_opt(item, "plan_end")
         if plan_start and plan_end and plan_end < plan_start:
@@ -73,6 +76,7 @@ def validate_wbs_draft(payload: dict, max_tasks: int = 200) -> list[dict]:
         seen_wbs.add(wbs)
         tasks.append({
             "wbs": wbs,
+            "parent_wbs": parent_wbs,
             "name": name,
             "owner": str(item.get("owner") or "") or None,
             "plan_start": plan_start.isoformat() if plan_start else None,
