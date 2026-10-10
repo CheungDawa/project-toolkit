@@ -33,7 +33,6 @@ const ATT_KEYS = ['unknown', 'resist', 'neutral', 'support', 'lead'] as const
 const ATT_NAMES: Record<string, string> = { unknown: '不知晓', resist: '抵制', neutral: '中立', support: '支持', lead: '领导' }
 const PRIORITY_COLORS: Record<string, string> = { P0: '#c0392b', P1: '#e8a33d', P2: '#1e8449' }
 
-/** 自动评分建议优先级（与原版一致） */
 function calcPriority(influence: number, interest: number): string {
   if (influence >= 4 && interest >= 4) return 'P0'
   if (influence >= 4 || interest >= 4) return 'P1'
@@ -54,20 +53,54 @@ function parseParticipation(text: string | null): Record<string, string> {
 }
 
 function buildParticipation(attrs: Record<string, string>): string | null {
-  return ATT_KEYS
-    .filter((k) => attrs[k])
-    .map((k) => `${ATT_NAMES[k]}（${attrs[k] === 'C' ? '当前' : '期望'}）`)
-    .join('；') || null
+  return (
+    ATT_KEYS.filter((k) => attrs[k])
+      .map((k) => `${ATT_NAMES[k]}（${attrs[k] === 'C' ? '当前' : '期望'}）`)
+      .join('；') || null
+  )
 }
 
-/** 象限定义（与原版一致） */
-const QUADRANTS = [
-  { id: 'q-hi-hi', title: '高影响 · 高关注', desc: '重点管理，保持紧密沟通', cls: 'hi-hi' },
-  { id: 'q-hi-lo', title: '高影响 · 低关注', desc: '令其满意，防患于未然', cls: 'hi-lo' },
-  { id: 'q-lo-hi', title: '低影响 · 高关注', desc: '随时告知，保持知情', cls: 'lo-hi' },
-  { id: 'q-lo-lo', title: '低影响 · 低关注', desc: '监督即可，定期关注', cls: 'lo-lo' },
-]
+/** 行类型：org=单位分组行 / sub=角色分类子行 / person=干系人行 */
+type RowType = 'org' | 'sub' | 'person'
+interface TableRow {
+  key: string
+  type: RowType
+  label: string
+  count: number
+  data?: StakeholderItem
+}
 
+/** 按单位→角色分类→人 构建分层行序列 */
+function buildHierarchicalRows(items: StakeholderItem[]): TableRow[] {
+  const orgMap = new Map<string, Map<string, StakeholderItem[]>>()
+  for (const item of items) {
+    const org = item.org || '未分类'
+    const subPos = item.sub_pos || '未分类'
+    if (!orgMap.has(org)) orgMap.set(org, new Map())
+    const subMap = orgMap.get(org)!
+    if (!subMap.has(subPos)) subMap.set(subPos, [])
+    subMap.get(subPos)!.push(item)
+  }
+  const rows: TableRow[] = []
+  for (const [org, subMap] of orgMap) {
+    const total = [...subMap.values()].flat().length
+    rows.push({ key: `org:${org}`, type: 'org', label: org, count: total })
+    for (const [subPos, people] of subMap) {
+      rows.push({ key: `sub:${org}:${subPos}`, type: 'sub', label: subPos, count: people.length })
+      for (const p of people) {
+        rows.push({ key: p.id, type: 'person', label: p.name, count: 1, data: p })
+      }
+    }
+  }
+  return rows
+}
+
+const QUADRANTS = [
+  { cls: 'hi-hi', title: '高影响 · 高关注', desc: '重点管理' },
+  { cls: 'hi-lo', title: '高影响 · 低关注', desc: '令其满意' },
+  { cls: 'lo-hi', title: '低影响 · 高关注', desc: '随时告知' },
+  { cls: 'lo-lo', title: '低影响 · 低关注', desc: '监督即可' },
+]
 const QUAD_STYLE: Record<string, { bg: string; border: string }> = {
   'hi-hi': { bg: '#fdeceb', border: '#f0c4bf' },
   'hi-lo': { bg: '#fdf3e3', border: '#ead9b0' },
@@ -109,7 +142,6 @@ export default function StakeholdersPage() {
     void fetchData()
   }, [fetchData])
 
-  // ==================== 筛选逻辑 ====================
   const filtered = useMemo(() => {
     let result = items
     const kw = searchText.trim().toLowerCase()
@@ -120,8 +152,7 @@ export default function StakeholdersPage() {
           (r.role || '').toLowerCase().includes(kw) ||
           (r.org || '').toLowerCase().includes(kw) ||
           (r.sub_pos || '').toLowerCase().includes(kw) ||
-          (r.demands || '').toLowerCase().includes(kw) ||
-          (r.participation || '').toLowerCase().includes(kw),
+          (r.demands || '').toLowerCase().includes(kw),
       )
     }
     if (filterAttrs.size > 0) {
@@ -136,31 +167,27 @@ export default function StakeholdersPage() {
     return result
   }, [items, searchText, filterAttrs, filterPrios])
 
-  // ==================== 仪表盘统计 ====================
-  const stats = useMemo(() => {
-    const p0 = filtered.filter((r) => r.priority === 'P0').length
-    const p1 = filtered.filter((r) => r.priority === 'P1').length
-    const p2 = filtered.filter((r) => r.priority === 'P2').length
-    const hiInfluence = filtered.filter((r) => r.influence >= 4).length
-    const total = filtered.length
-    return { p0, p1, p2, hiInfluence, total }
-  }, [filtered])
+  const stats = useMemo(() => ({
+    p0: filtered.filter((r) => r.priority === 'P0').length,
+    p1: filtered.filter((r) => r.priority === 'P1').length,
+    p2: filtered.filter((r) => r.priority === 'P2').length,
+    hiInfluence: filtered.filter((r) => r.influence >= 4).length,
+    total: filtered.length,
+  }), [filtered])
 
-  // ==================== 矩阵象限分配 ====================
+  const tableRows = useMemo(() => buildHierarchicalRows(filtered), [filtered])
+
   const quadMap = useMemo(() => {
     const result: Record<string, StakeholderItem[]> = { 'hi-hi': [], 'hi-lo': [], 'lo-hi': [], 'lo-lo': [] }
     for (const r of filtered) {
-      const hiInfluence = r.influence >= 4
-      const hiInterest = r.interest >= 4
-      if (hiInfluence && hiInterest) result['hi-hi'].push(r)
-      else if (hiInfluence && !hiInterest) result['hi-lo'].push(r)
-      else if (!hiInfluence && hiInterest) result['lo-hi'].push(r)
+      if (r.influence >= 4 && r.interest >= 4) result['hi-hi'].push(r)
+      else if (r.influence >= 4) result['hi-lo'].push(r)
+      else if (r.interest >= 4) result['lo-hi'].push(r)
       else result['lo-lo'].push(r)
     }
     return result
   }, [filtered])
 
-  // ==================== 表单操作 ====================
   const openCreate = () => {
     setEditing(null)
     setAttrs({})
@@ -175,39 +202,27 @@ export default function StakeholdersPage() {
     setAttrs(parseParticipation(item.participation))
     setAutoHint('')
     form.setFieldsValue({
-      name: item.name,
-      org: item.org,
-      sub_pos: item.sub_pos,
-      role: item.role,
-      contact_phone: item.contact_phone,
-      contact_wechat: item.contact_wechat,
-      contact_email: item.contact_email,
-      influence: item.influence,
-      interest: item.interest,
-      priority: item.priority,
-      demands: item.demands,
-      strategy: item.strategy,
-      comm_frequency: item.comm_frequency,
+      name: item.name, org: item.org, sub_pos: item.sub_pos, role: item.role,
+      contact_phone: item.contact_phone, contact_wechat: item.contact_wechat, contact_email: item.contact_email,
+      influence: item.influence, interest: item.interest, priority: item.priority,
+      demands: item.demands, strategy: item.strategy, comm_frequency: item.comm_frequency,
     })
     setModalOpen(true)
   }
 
   const handleAutoScore = () => {
-    const influence = form.getFieldValue('influence') || 3
-    const interest = form.getFieldValue('interest') || 3
-    const suggested = calcPriority(influence, interest)
-    form.setFieldsValue({ priority: suggested })
-    setAutoHint(`影响力 ${influence} × 关注度 ${interest} → 建议优先级：${suggested}`)
+    const inf = form.getFieldValue('influence') || 3
+    const int = form.getFieldValue('interest') || 3
+    const p = calcPriority(inf, int)
+    form.setFieldsValue({ priority: p })
+    setAutoHint(`影响力 ${inf} × 关注度 ${int} → 建议优先级：${p}`)
   }
 
   const handleOk = async () => {
     if (!projectId) return
     const values = await form.validateFields()
-    const payload = {
-      ...values,
-      participation: buildParticipation(attrs),
-    }
     try {
+      const payload = { ...values, participation: buildParticipation(attrs) }
       if (editing) {
         await updateStakeholder(editing.id, payload)
         message.success('干系人已更新')
@@ -253,171 +268,134 @@ export default function StakeholdersPage() {
 
   const toggleFilter = (key: string, type: 'attr' | 'prio') => {
     if (type === 'attr') {
-      setFilterAttrs((prev) => {
-        const next = new Set(prev)
-        if (next.has(key)) next.delete(key)
-        else next.add(key)
-        return next
-      })
+      setFilterAttrs((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n })
     } else {
-      setFilterPrios((prev) => {
-        const next = new Set(prev)
-        if (next.has(key)) next.delete(key)
-        else next.add(key)
-        return next
-      })
+      setFilterPrios((prev) => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n })
     }
   }
 
-  // ==================== 渲染 ====================
-  const statCard = (label: string, value: number, color?: string, sub?: string) => (
-    <Card size="small" style={{ textAlign: 'center', borderRadius: 10 }}>
+  const statCard = (label: string, value: number, color?: string) => (
+    <Card size="small" style={{ textAlign: 'center', borderRadius: 10, minWidth: 110 }}>
       <div style={{ fontSize: 11, color: '#6b7c8c' }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700, color: color || '#1c2b36' }}>{value}</div>
-      {sub ? <div style={{ fontSize: 10, color: '#8a9ba8' }}>{sub}</div> : null}
     </Card>
   )
 
-  const renderMatrix = () => (
-    <Card size="small" style={{ marginBottom: 12, borderRadius: 10 }}>
-      <Typography.Text strong style={{ fontSize: 14, color: '#123c58' }}>干系人影响力 × 关注度矩阵</Typography.Text>
-      <div style={{ fontSize: 11, color: '#6b7c8c', margin: '4px 0 10px' }}>
-        点击人名可跳转编辑。颜色即优先级（红=P0 / 黄=P1 / 绿=P2）。
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, minHeight: 120 }}>
-        {QUADRANTS.map((q) => {
-          const people = quadMap[q.cls] || []
-          const style = QUAD_STYLE[q.cls]
-          return (
-            <div key={q.id} style={{ background: style.bg, border: `1px solid ${style.border}`, borderRadius: 8, padding: 10, minHeight: 60 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{q.title}</div>
-              <div style={{ fontSize: 10, color: '#6b7c8c', marginBottom: 6 }}>{q.desc}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                {people.map((p) => (
-                  <span
-                    key={p.id}
-                    onClick={() => openEdit(p)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      padding: '2px 8px',
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: '#fff',
-                      background: PRIORITY_COLORS[p.priority || 'P2'] || '#6b7c8c',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {p.name}
-                  </span>
-                ))}
-                {people.length === 0 ? <span style={{ fontSize: 10, color: '#aab' }}>（无）</span> : null}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </Card>
-  )
+  // ==================== 表格列（区分 group / sub / person） ====================
+  const cellFor = (r: TableRow, personRender: (d: StakeholderItem) => React.ReactNode, groupText = ''): React.ReactNode => {
+    if (r.type === 'org') return <span style={{ fontWeight: 700, fontSize: 13, color: '#123c58' }}>{groupText}</span>
+    if (r.type === 'sub') return <span style={{ fontWeight: 600, fontSize: 12, color: '#1a5e8a', paddingLeft: 20 }}>{groupText}</span>
+    return personRender(r.data!)
+  }
 
-  const columns = [
+  const columns: {
+    title: string
+    key: string
+    dataIndex?: string
+    width?: number
+    align?: 'left' | 'center' | 'right'
+    fixed?: 'right'
+    render: (_: unknown, record: TableRow) => React.ReactNode
+  }[] = [
     {
-      title: '干系人',
-      dataIndex: 'name',
-      width: 120,
-      render: (v: string, r: StakeholderItem) => (
+      title: '干系人', key: 'name', width: 140,
+      render: (_: unknown, r) => cellFor(r, (d) => (
         <div>
-          <div style={{ fontWeight: 600 }}>{v}</div>
-          {r.sub_pos ? <div style={{ fontSize: 10, color: '#8a9ba8' }}>{r.sub_pos}</div> : null}
+          <div style={{ fontWeight: 600 }}>{d.name}</div>
+          {d.role ? <div style={{ fontSize: 10, color: '#8a9ba8' }}>{d.role}</div> : null}
         </div>
-      ),
+      ), r.type === 'org' ? `${r.label}` : r.type === 'sub' ? `└ ${r.label}` : ''),
     },
-    { title: '职位/角色', dataIndex: 'role', width: 130, render: (v: string | null) => v ?? '-' },
     {
-      title: '联系方式',
-      key: 'contact',
-      width: 140,
-      render: (_: unknown, r: StakeholderItem) => (
+      title: '单位', key: 'org', width: 140,
+      render: (_, r) => cellFor(r, (d) => <span style={{ fontSize: 12 }}>{d.org || '-'}</span>, ''),
+    },
+    {
+      title: '联系方式', key: 'contact', width: 140,
+      render: (_, r) => cellFor(r, (d) => (
         <div style={{ fontSize: 11, lineHeight: 1.5 }}>
-          {r.contact_phone ? <div>📱 {r.contact_phone}</div> : null}
-          {r.contact_wechat ? <div>💬 {r.contact_wechat}</div> : null}
-          {r.contact_email ? <div>✉️ {r.contact_email}</div> : null}
-          {!r.contact_phone && !r.contact_wechat && !r.contact_email ? '-' : null}
+          {d.contact_phone ? <div>📱 {d.contact_phone}</div> : null}
+          {d.contact_wechat ? <div>💬 {d.contact_wechat}</div> : null}
+          {d.contact_email ? <div>✉️ {d.contact_email}</div> : null}
+          {!d.contact_phone && !d.contact_wechat && !d.contact_email ? '-' : null}
         </div>
-      ),
+      )),
     },
     ...ATT_KEYS.map((k) => ({
-      title: ATT_NAMES[k],
-      key: k,
-      width: 60,
-      align: 'center' as const,
-      render: (_: unknown, r: StakeholderItem) => {
-        const p = parseParticipation(r.participation)
+      title: ATT_NAMES[k], key: k, width: 55, align: 'center' as const,
+      render: (_: unknown, r: TableRow) => {
+        if (r.type !== 'person') return null
+        const p = parseParticipation(r.data!.participation)
         const mark = p[k]
-        if (!mark) return <div style={{ width: 20, height: 20, border: '1px dashed #c3cfda', borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#c3cfda' }}>—</div>
+        if (!mark) return <div style={{ width: 18, height: 18, border: '1px dashed #c3cfda', borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#c3cfda' }}>—</div>
         return (
-          <div
-            style={{
-              width: 20, height: 20, borderRadius: 4, display: 'inline-flex',
-              alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700,
-              background: mark === 'C' ? '#1a5e8a' : '#e8a33d', color: '#fff',
-            }}
-          >
+          <div style={{ width: 18, height: 18, borderRadius: 4, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, background: mark === 'C' ? '#1a5e8a' : '#e8a33d', color: '#fff' }}>
             {mark}
           </div>
         )
       },
     })),
     {
-      title: '优先级',
-      dataIndex: 'priority',
-      width: 70,
-      align: 'center' as const,
-      render: (v: string | null) =>
-        v ? (
-          <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700, color: '#fff', background: PRIORITY_COLORS[v] || '#6b7c8c' }}>{v}</span>
-        ) : '-',
+      title: '优先级', key: 'priority', width: 65, align: 'center' as const,
+      render: (_, r) => {
+        if (r.type !== 'person') return null
+        const v = r.data!.priority
+        return v ? (
+          <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 12, fontSize: 10, fontWeight: 700, color: '#fff', background: PRIORITY_COLORS[v] || '#6b7c8c' }}>{v}</span>
+        ) : '-'
+      },
     },
     {
-      title: '需求/核心诉求',
-      dataIndex: 'demands',
-      width: 200,
-      render: (v: string | null, r: StakeholderItem) => (
-        <div style={{ maxWidth: 200, lineHeight: 1.5 }}>
-          {v || '-'}
-          {r.strategy ? <div style={{ fontSize: 10, color: '#6b7c8c', marginTop: 2 }}>{r.strategy}</div> : null}
-        </div>
-      ),
+      title: '需求/核心诉求', key: 'demands', width: 180,
+      render: (_, r) => {
+        if (r.type === 'org') return null
+        if (r.type === 'sub') return null
+        return (
+          <div style={{ maxWidth: 180, fontSize: 12, lineHeight: 1.4 }}>
+            {r.data!.demands || '-'}
+          </div>
+        )
+      },
     },
     {
-      title: '沟通计划',
-      dataIndex: 'comm_frequency',
-      width: 120,
-      render: (v: string | null) => v ?? '-',
+      title: '沟通计划', key: 'comm', width: 110,
+      render: (_, r) => {
+        if (r.type !== 'person') return null
+        return r.data!.comm_frequency || '-'
+      },
     },
     {
-      title: '操作',
-      key: 'actions',
-      width: 130,
-      fixed: 'right' as const,
-      render: (_: unknown, r: StakeholderItem) => (
-        <Space size={4}>
-          <Button size="small" icon={<MessageOutlined />} onClick={() => void openComms(r)} />
-          <Button size="small" onClick={() => openEdit(r)}>编辑</Button>
-          <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(r)}>
-            <Button size="small" danger />
-          </Popconfirm>
-        </Space>
-      ),
+      title: '操作', key: 'actions', width: 130, fixed: 'right' as const,
+      render: (_, r) => {
+        if (r.type !== 'person') return null
+        return (
+          <Space size={4}>
+            <Button size="small" icon={<MessageOutlined />} onClick={() => void openComms(r.data!)} />
+            <Button size="small" onClick={() => openEdit(r.data!)}>编辑</Button>
+            <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(r.data!)}>
+              <Button size="small" danger />
+            </Popconfirm>
+          </Space>
+        )
+      },
     },
   ]
 
+  const rowStyle = (r: TableRow): React.CSSProperties => {
+    if (r.type === 'org') return { background: '#f0f5fa', fontWeight: 700, color: '#123c58' }
+    if (r.type === 'sub') return { background: '#f6f9fc', color: '#1a5e8a' }
+    return {}
+  }
+
+  const countBadge = (r: TableRow) => {
+    if (r.type === 'person') return null
+    return <span style={{ fontSize: 11, color: '#6b7c8c', marginLeft: 8, fontWeight: 400 }}>{r.count} 人</span>
+  }
+
   return (
     <div>
-      {/* 仪表盘统计卡 */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 12 }}>
+      {/* 仪表盘 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(110px,1fr))', gap: 10, marginBottom: 12 }}>
         {statCard('干系人总数', stats.total)}
         {statCard('P0 重点管理', stats.p0, PRIORITY_COLORS.P0)}
         {statCard('P1 重点关注', stats.p1, PRIORITY_COLORS.P1)}
@@ -428,48 +406,64 @@ export default function StakeholdersPage() {
       {/* 工具条 */}
       <Card size="small" style={{ marginBottom: 12, borderRadius: 10 }}>
         <Space wrap>
-          <Input.Search
-            placeholder="搜索姓名 / 职位 / 单位 / 需求…"
-            style={{ width: 240 }}
-            onSearch={setSearchText}
-            allowClear
-          />
+          <Input.Search placeholder="搜索姓名 / 职位 / 单位 / 需求…" style={{ width: 220 }} onSearch={setSearchText} allowClear />
           {ATT_KEYS.map((k) => (
-            <Tag.CheckableTag
-              key={k}
-              checked={filterAttrs.has(k)}
-              onChange={() => toggleFilter(k, 'attr')}
-            >
-              {ATT_NAMES[k]}
-            </Tag.CheckableTag>
+            <Tag.CheckableTag key={k} checked={filterAttrs.has(k)} onChange={() => toggleFilter(k, 'attr')}>{ATT_NAMES[k]}</Tag.CheckableTag>
           ))}
           <span style={{ width: 1, height: 20, background: '#d9e2ea' }} />
           {['P0', 'P1', 'P2'].map((p) => (
-            <Tag.CheckableTag
-              key={p}
-              checked={filterPrios.has(p)}
-              onChange={() => toggleFilter(p, 'prio')}
-            >
-              {p}
-            </Tag.CheckableTag>
+            <Tag.CheckableTag key={p} checked={filterPrios.has(p)} onChange={() => toggleFilter(p, 'prio')}>{p}</Tag.CheckableTag>
           ))}
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增干系人</Button>
+          <Button onClick={() => window.open(`/api/projects/${projectId}/stakeholders/report/export`)}>导出报告</Button>
         </Space>
       </Card>
 
       {/* 矩阵 */}
-      {renderMatrix()}
+      <Card size="small" style={{ marginBottom: 12, borderRadius: 10 }}>
+        <Typography.Text strong style={{ fontSize: 14, color: '#123c58' }}>干系人影响力 × 关注度矩阵</Typography.Text>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, minHeight: 120, marginTop: 8 }}>
+          {QUADRANTS.map((q) => {
+            const people = quadMap[q.cls] || []
+            const s = QUAD_STYLE[q.cls]
+            return (
+              <div key={q.cls} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 8, padding: 10, minHeight: 60 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{q.title} — {q.desc}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                  {people.map((p) => (
+                    <span key={p.id} onClick={() => openEdit(p)}
+                      style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, color: '#fff', background: PRIORITY_COLORS[p.priority || 'P2'] || '#6b7c8c', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {p.name}
+                    </span>
+                  ))}
+                  {people.length === 0 ? <span style={{ fontSize: 10, color: '#aab' }}>（无）</span> : null}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
 
-      {/* 分组表格 */}
+      {/* 分层表格 */}
       <Card size="small" style={{ borderRadius: 10 }}>
-        <Table<StakeholderItem>
-          rowKey="id"
+        <Table<TableRow>
+          rowKey="key"
           loading={loading}
-          dataSource={filtered}
+          dataSource={tableRows}
           pagination={false}
           size="small"
           scroll={{ x: 1300 }}
-          columns={columns}
+          columns={columns as never}
+          onRow={(r) => ({ style: rowStyle(r) })}
+          components={{
+            body: {
+              row: (props: React.HTMLAttributes<HTMLTableRowElement> & { 'data-row-key'?: string }) => {
+                const key = props['data-row-key'] as string
+                const row = tableRows.find((r) => r.key === key)
+                return <tr {...props} style={{ ...props.style, ...(row ? rowStyle(row) : {}) }} />
+              },
+            },
+          }}
         />
       </Card>
 
@@ -477,33 +471,15 @@ export default function StakeholdersPage() {
       <Modal title={editing ? `编辑干系人 · ${editing.name}` : '新增干系人'} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => void handleOk()} width={720} destroyOnClose>
         <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-            <Form.Item name="org" label="单位名称">
-              <Input placeholder="选择或输入" />
-            </Form.Item>
-            <Form.Item name="sub_pos" label="角色分类">
-              <Input placeholder="决策层/管理层/使用方…" />
-            </Form.Item>
-            <Form.Item name="name" label="干系人姓名" rules={[{ required: true, message: '请输入姓名' }]}>
-              <Input />
-            </Form.Item>
-            <Form.Item name="role" label="职位/角色">
-              <Input />
-            </Form.Item>
-            <Form.Item name="contact_phone" label="电话">
-              <Input />
-            </Form.Item>
-            <Form.Item name="contact_wechat" label="微信">
-              <Input />
-            </Form.Item>
-            <Form.Item name="contact_email" label="邮箱">
-              <Input />
-            </Form.Item>
-            <Form.Item name="influence" label="影响力(1-5)" initialValue={3}>
-              <InputNumber min={1} max={5} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="interest" label="关注度(1-5)" initialValue={3}>
-              <InputNumber min={1} max={5} style={{ width: '100%' }} />
-            </Form.Item>
+            <Form.Item name="org" label="单位名称"><Input placeholder="选择或输入" /></Form.Item>
+            <Form.Item name="sub_pos" label="角色分类"><Input placeholder="决策层/管理层/使用方…" /></Form.Item>
+            <Form.Item name="name" label="干系人姓名" rules={[{ required: true, message: '请输入姓名' }]}><Input /></Form.Item>
+            <Form.Item name="role" label="职位/角色"><Input /></Form.Item>
+            <Form.Item name="contact_phone" label="电话"><Input /></Form.Item>
+            <Form.Item name="contact_wechat" label="微信"><Input /></Form.Item>
+            <Form.Item name="contact_email" label="邮箱"><Input /></Form.Item>
+            <Form.Item name="influence" label="影响力(1-5)" initialValue={3}><InputNumber min={1} max={5} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="interest" label="关注度(1-5)" initialValue={3}><InputNumber min={1} max={5} style={{ width: '100%' }} /></Form.Item>
             <Form.Item name="priority" label="优先级">
               <Select options={['P0', 'P1', 'P2'].map((v) => ({ value: v, label: `${v} ${v === 'P0' ? '重点管理' : v === 'P1' ? '重点关注' : '一般跟进'}` }))} />
             </Form.Item>
@@ -513,74 +489,42 @@ export default function StakeholdersPage() {
             </Form.Item>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Form.Item name="demands" label="需求/核心诉求">
-              <Input.TextArea rows={2} />
-            </Form.Item>
-            <Form.Item name="strategy" label="沟通策略/备注">
-              <Input.TextArea rows={2} />
-            </Form.Item>
+            <Form.Item name="demands" label="需求/核心诉求"><Input.TextArea rows={2} /></Form.Item>
+            <Form.Item name="strategy" label="沟通策略/备注"><Input.TextArea rows={2} /></Form.Item>
           </div>
-          <Form.Item name="comm_frequency" label="沟通计划">
-            <Input placeholder="A日报 B周报 E月度远程 F线下" />
-          </Form.Item>
-
-          <div style={{ borderTop: '1px solid #d9e2ea', paddingTop: 10, marginTop: 8, fontSize: 12, color: '#6b7c8c', fontWeight: 600, marginBottom: 8 }}>
-            参与程度标记（C=当前 D=期望）
-          </div>
+          <Form.Item name="comm_frequency" label="沟通计划"><Input placeholder="A日报 B周报 E月度远程 F线下" /></Form.Item>
+          <div style={{ borderTop: '1px solid #d9e2ea', paddingTop: 10, marginTop: 8, fontSize: 12, color: '#6b7c8c', fontWeight: 600, marginBottom: 8 }}>参与程度标记（C=当前 D=期望）</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10 }}>
             {ATT_KEYS.map((k) => (
               <div key={k}>
                 <div style={{ fontSize: 11, color: '#6b7c8c', marginBottom: 4 }}>{ATT_NAMES[k]}</div>
-                <Select
-                  value={attrs[k] || undefined}
-                  allowClear
-                  placeholder="—"
-                  style={{ width: '100%' }}
+                <Select value={attrs[k] || undefined} allowClear placeholder="—" style={{ width: '100%' }}
                   onChange={(v) => setAttrs((prev) => ({ ...prev, [k]: v || '' }))}
-                  options={[
-                    { value: 'C', label: 'C 当前' },
-                    { value: 'D', label: 'D 期望' },
-                  ]}
-                />
+                  options={[{ value: 'C', label: 'C 当前' }, { value: 'D', label: 'D 期望' }]} />
               </div>
             ))}
           </div>
         </Form>
       </Modal>
 
-      {/* 沟通历史抽屉 */}
+      {/* 沟通历史 */}
       <Drawer title={commOpen ? `沟通历史 · ${commOpen.name}` : ''} open={!!commOpen} onClose={() => setCommOpen(null)} width={560}>
-        <Table
-          rowKey="id"
-          size="small"
-          dataSource={comms as Record<string, unknown>[]}
-          pagination={false}
+        <Table rowKey="id" size="small" dataSource={comms as Record<string, unknown>[]} pagination={false}
           columns={[
             { title: '日期', dataIndex: 'comm_date', width: 100, render: (v: string | null) => v ?? '-' },
             { title: '渠道', dataIndex: 'channel', width: 80, render: (v: string | null) => v ?? '-' },
             { title: '内容/结论', key: 'content', render: (_: unknown, r) => `${r.content ?? ''}${r.conclusion ? `（结论：${r.conclusion}）` : ''}` },
             { title: '后续行动', dataIndex: 'follow_up_action', render: (v: string | null) => v ?? '-' },
-          ]}
-        />
+          ]} />
         <Form form={commForm} layout="vertical" style={{ marginTop: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Form.Item name="comm_date" label="沟通日期">
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="channel" label="渠道">
-              <Select allowClear options={['电话', '微信', '邮件', '会议', '现场'].map((v) => ({ value: v, label: v }))} />
-            </Form.Item>
+            <Form.Item name="comm_date" label="沟通日期"><DatePicker style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="channel" label="渠道"><Select allowClear options={['电话', '微信', '邮件', '会议', '现场'].map((v) => ({ value: v, label: v }))} /></Form.Item>
           </div>
-          <Form.Item name="content" label="沟通内容">
-            <Input.TextArea rows={2} />
-          </Form.Item>
+          <Form.Item name="content" label="沟通内容"><Input.TextArea rows={2} /></Form.Item>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Form.Item name="conclusion" label="结论">
-              <Input.TextArea rows={2} />
-            </Form.Item>
-            <Form.Item name="follow_up_action" label="后续行动">
-              <Input.TextArea rows={2} />
-            </Form.Item>
+            <Form.Item name="conclusion" label="结论"><Input.TextArea rows={2} /></Form.Item>
+            <Form.Item name="follow_up_action" label="后续行动"><Input.TextArea rows={2} /></Form.Item>
           </div>
           <Button type="primary" onClick={() => void handleAddComm()}>记录沟通</Button>
         </Form>

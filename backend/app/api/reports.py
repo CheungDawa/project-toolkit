@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.models.project import Project
-from app.models.stage3 import Issue, Risk
+from app.models.stage3 import Issue, Risk, Stakeholder
 from app.models.stage5 import Deliverable
 from app.models.task import Milestone, Task
 from app.schemas.stage5 import DeliverableRead
@@ -141,3 +141,80 @@ def _build_final_doc(db: Session, project: Project) -> Document:
     issues = list(db.scalars(select(Issue).where(Issue.project_id == project.id)))
     doc.add_paragraph(f"风险 {len(risks)} 项、问题 {len(issues)} 项（明细见系统台账）")
     return doc
+
+
+@router.get("/projects/{project_id}/stakeholders/report/export")
+def export_stakeholder_report(project_id: UUID, db: Session = Depends(get_db)) -> StreamingResponse:
+    """干系人管理报告 Word 导出（按单位→角色分类分组，含统计/矩阵/联系方式/参与程度）。"""
+    from app.core.errors import AppError
+    project = db.scalar(select(Project).where(Project.id == project_id))
+    if project is None:
+        raise AppError(404, "not_found", "项目不存在")
+    stakeholders = list(db.scalars(select(Stakeholder).where(Stakeholder.project_id == project_id)))
+    if not stakeholders:
+        raise AppError(422, "empty", "该项目暂无干系人数据")
+
+    doc = Document()
+    doc.add_heading(f"干系人管理报告：{project.name}", level=1)
+    now = _utcnow().astimezone()
+    doc.add_paragraph(f"项目编号：{project.code}    导出日期：{now.date().isoformat()}")
+
+    # 统计
+    p0 = sum(1 for s in stakeholders if s.priority == "P0")
+    p1 = sum(1 for s in stakeholders if s.priority == "P1")
+    p2 = sum(1 for s in stakeholders if s.priority == "P2")
+    hi_inf = sum(1 for s in stakeholders if s.influence >= 4)
+    doc.add_heading("一、统计摘要", level=2)
+    doc.add_paragraph(f"干系人总数：{len(stakeholders)}    P0 重点管理：{p0}    P1 重点关注：{p1}    P2 一般跟进：{p2}    高影响力(≥4)：{hi_inf}")
+
+    # 按单位→角色分类分组
+    org_map: dict[str, dict[str, list[Stakeholder]]] = {}
+    for s in stakeholders:
+        org = s.org or "未分类"
+        sub = s.sub_pos or "未分类"
+        if org not in org_map:
+            org_map[org] = {}
+        if sub not in org_map[org]:
+            org_map[org][sub] = []
+        org_map[org][sub].append(s)
+
+    doc.add_heading("二、干系人明细（按单位分组）", level=2)
+    for org, sub_map in org_map.items():
+        total = sum(len(v) for v in sub_map.values())
+        p = doc.add_paragraph()
+        p.add_run(f"■ {org}（{total} 人）").bold = True
+        for sub, people in sub_map.items():
+            p2 = doc.add_paragraph()
+            p2.paragraph_format.left_indent = 0.4 * 914400  # 0.4 inch indent
+            p2.add_run(f"├ {sub}（{len(people)} 人）").bold = True
+            table = doc.add_table(rows=1, cols=7)
+            table.style = "Light Grid Accent 1"
+            for i, text in enumerate(["姓名", "职位/角色", "优先级", "参与程度", "联系方式", "需求/诉求", "沟通计划"]):
+                table.rows[0].cells[i].text = text
+            for s in people:
+                row = table.add_row().cells
+                row[0].text = s.name
+                row[1].text = s.role or "-"
+                row[2].text = s.priority or "-"
+                row[3].text = s.participation or "-"
+                contact = []
+                if s.contact_phone:
+                    contact.append(f"📱{s.contact_phone}")
+                if s.contact_wechat:
+                    contact.append(f"💬{s.contact_wechat}")
+                if s.contact_email:
+                    contact.append(f"✉️{s.contact_email}")
+                row[4].text = "\n".join(contact) or "-"
+                row[5].text = s.demands or "-"
+                row[6].text = s.comm_frequency or "-"
+            doc.add_paragraph()  # 空行分隔
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    filename = f"stakeholders_report_{project.code}_{now.date().isoformat()}.docx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
