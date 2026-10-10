@@ -11,7 +11,7 @@ services:
       backend:
         condition: service_started
     restart: unless-stopped
-healthcheck:
+    healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
       interval: 10s
       timeout: 5s
@@ -66,10 +66,10 @@ healthcheck:
       - -c
       - |
         while true; do
-          echo "[backup] $(date +'%F %T') 姣忔棩澶囦唤寮€濮?
+          echo "[backup] $(date +'%F %T') 濮ｅ繑妫╂径鍥﹀敜瀵偓婵?
           pg_dump -h db -U pt -d projecttoolkit -Fc | gzip > /backups/pt_$(date +%Y%m%d_%H%M%S).dump.gz
           find /backups -name 'pt_*.dump.gz' -mtime +14 -delete
-          echo "[backup] 瀹屾垚锛岀瓑寰?24 灏忔椂"
+          echo "[backup] 鐎瑰本鍨氶敍宀€鐡戝?24 鐏忓繑妞?
           sleep 86400
         done
     depends_on:
