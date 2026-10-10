@@ -1,4 +1,4 @@
-import { App, Card, Select, Space, Table, Tag } from 'antd'
+import { App, Select, Space, Table, Tag } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
