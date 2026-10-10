@@ -68,6 +68,7 @@ class TaskRead(BaseModel):
     acceptance_criteria: str | None
     deliverable_name: str | None
     progress_source: str
+    risk_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 

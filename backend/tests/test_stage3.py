@@ -36,6 +36,11 @@ def test_risk_matrix_configurable(client):
     assert resp.status_code == 200
     risk = _risk(client, pid, probability=3, impact=2)
     assert (risk["score"], risk["level"]) == (6, "低")
+    # 还原默认阈值，避免污染后续用例
+    client.put(
+        "/api/settings/risk.matrix",
+        json={"value": {"rows": [1, 2, 3, 4, 5], "cols": [1, 2, 3, 4, 5], "levels": {"low": 4, "medium": 9, "high": 25}}},
+    )
 
 
 def test_risk_assessment_history(client):

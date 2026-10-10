@@ -20,6 +20,7 @@ from app.schemas.stage3 import (
     ChangeRead,
     ChangeUpdate,
     CommunicationCreate,
+    CommunicationRead,
     StakeholderCreate,
     StakeholderRead,
     StakeholderUpdate,
@@ -136,7 +137,7 @@ def _get_stakeholder(db: Session, stakeholder_id: UUID) -> Stakeholder:
 
 # ---------- 沟通历史（P1） ----------
 
-@router.get("/stakeholders/{stakeholder_id}/communications")
+@router.get("/stakeholders/{stakeholder_id}/communications", response_model=list[CommunicationRead])
 def list_communications(stakeholder_id: UUID, db: Session = Depends(get_db)) -> list:
     _get_stakeholder(db, stakeholder_id)
     return list(
