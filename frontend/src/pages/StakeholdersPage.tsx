@@ -497,15 +497,11 @@ export default function StakeholdersPage() {
         <Table<StakeholderItem>
           rowKey="id"
           loading={loading}
-          dataSource={groupedData}
+          dataSource={filtered}
           pagination={false}
           size="small"
           scroll={{ x: 1300 }}
           columns={columns}
-          expandable={{
-            defaultExpandAllRows: true,
-            rowExpandable: (record) => record.subGroups !== undefined,
-          }}
         />
       </Card>
 
