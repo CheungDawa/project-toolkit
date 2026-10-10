@@ -59,6 +59,9 @@ class Task(TimestampMixin, Base):
     acceptance_criteria: Mapped[str | None] = mapped_column(Text(), nullable=True)
     deliverable_name: Mapped[str | None] = mapped_column(Text(), nullable=True)
     progress_source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    risk_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(), ForeignKey("risks.id"), nullable=True
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

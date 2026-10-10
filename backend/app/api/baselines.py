@@ -12,6 +12,7 @@ from app.models.task import BaselineTaskSnapshot, ScheduleBaseline, Task
 from app.schemas.task import BaselineCreate, BaselineDiffRow, BaselineRead
 from app.services import progress as progress_service
 from app.services import wbs as wbs_service
+from app.services import audit as audit_service
 
 router = APIRouter(prefix="/api", tags=["baselines"])
 
@@ -81,6 +82,7 @@ def create_baseline(project_id: UUID, payload: BaselineCreate, db: Session = Dep
             walk(task.id, level + 1)
 
     walk(None, 1)
+    audit_service.record(db, project_id, "baseline", baseline.id, "create", f"保存计划基线：{payload.name}（v{version}）")
     db.commit()
     db.refresh(baseline)
     return baseline

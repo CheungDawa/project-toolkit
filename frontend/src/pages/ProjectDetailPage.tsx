@@ -26,14 +26,16 @@ const ACTIVE_MODULES = [
   { icon: <BarChartOutlined />, name: '甘特图', to: (id: string) => `/projects/${id}/gantt` },
   { icon: <FlagOutlined />, name: '里程碑', to: (id: string) => `/projects/${id}/milestones` },
   { icon: <LinkOutlined />, name: '计划基线', to: (id: string) => `/projects/${id}/baselines` },
+  { icon: <WarningOutlined />, name: '风险', to: (id: string) => `/projects/${id}/risks` },
+  { icon: <BugOutlined />, name: '问题', to: (id: string) => `/projects/${id}/issues` },
+  { icon: <FundProjectionScreenOutlined />, name: '变更', to: (id: string) => `/projects/${id}/changes` },
+  { icon: <TeamOutlined />, name: '干系人', to: (id: string) => `/projects/${id}/stakeholders` },
+  { icon: <FileDoneOutlined />, name: '审计日志', to: (id: string) => `/projects/${id}/audit` },
 ]
 
 const FUTURE_CARDS = [
-  { icon: <WarningOutlined />, name: '风险', phase: '阶段 3' },
-  { icon: <BugOutlined />, name: '问题', phase: '阶段 3' },
-  { icon: <FundProjectionScreenOutlined />, name: '变更', phase: '阶段 3' },
-  { icon: <TeamOutlined />, name: '干系人', phase: '阶段 3' },
   { icon: <FileDoneOutlined />, name: '交付资料', phase: '阶段 5' },
+  { icon: <BarChartOutlined />, name: '燃尽图/快照', phase: '阶段 5' },
 ]
 
 export default function ProjectDetailPage() {

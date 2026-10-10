@@ -11,6 +11,7 @@ from app.models.task import Task, TaskDependency
 from app.schemas.task import DependencyCreate, DependencyRead
 from app.services import cycle as cycle_service
 from app.services import wbs as wbs_service
+from app.services import audit as audit_service
 
 router = APIRouter(prefix="/api", tags=["dependencies"])
 
@@ -56,6 +57,7 @@ def create_dependency(
         lag_days=payload.lag_days,
     )
     db.add(dep)
+    audit_service.record(db, project_id, "dependency", dep.id, "create", f"新增依赖：{pred.wbs_code} → {succ.wbs_code}")
     db.commit()
     db.refresh(dep)
     return dep

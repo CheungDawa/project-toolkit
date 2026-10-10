@@ -15,6 +15,15 @@ from app.models.task import (  # noqa: F401  注册模型元数据
     Task,
     TaskDependency,
 )
+from app.models.stage3 import (  # noqa: F401  注册模型元数据
+    ActivityLog,
+    ChangeRequest,
+    Issue,
+    Risk,
+    RiskAssessment,
+    Stakeholder,
+    StakeholderCommunication,
+)
 
 config = context.config
 

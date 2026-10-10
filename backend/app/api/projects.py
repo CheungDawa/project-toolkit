@@ -18,6 +18,7 @@ from app.core.db import get_db
 from app.core.errors import AppError
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectPage, ProjectRead, ProjectUpdate
+from app.services import audit
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -75,6 +76,8 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Any
     except IntegrityError:
         db.rollback()
         raise _code_taken_error() from None
+    audit.record(db, project.id, "project", project.id, "create", f"创建项目：{project.code} {project.name}")
+    db.commit()
     db.refresh(project)
     return project
 
@@ -151,6 +154,7 @@ def update_project(project_id: UUID, payload: ProjectUpdate, db: Session = Depen
 def archive_project(project_id: UUID, db: Session = Depends(get_db)) -> Any:
     project = _get_or_404(db, project_id)
     project.archived_at = project.archived_at or _utcnow()
+    audit.record(db, project.id, "project", project.id, "archive", f"归档项目：{project.code}")
     db.commit()
     db.refresh(project)
     return project
@@ -160,5 +164,6 @@ def archive_project(project_id: UUID, db: Session = Depends(get_db)) -> Any:
 def delete_project(project_id: UUID, db: Session = Depends(get_db)) -> Response:
     project = _get_or_404(db, project_id)
     project.deleted_at = _utcnow()
+    audit.record(db, project.id, "project", project.id, "delete", f"删除项目：{project.code}")
     db.commit()
     return Response(status_code=204)

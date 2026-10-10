@@ -25,6 +25,7 @@ from app.services import calendar as calendar_service
 from app.services import cycle as cycle_service
 from app.services import progress as progress_service
 from app.services import wbs as wbs_service
+from app.services import audit as audit_service
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
@@ -122,6 +123,8 @@ def create_task(project_id: UUID, payload: TaskCreate, db: Session = Depends(get
     db.add(task)
     db.commit()
     wbs_service.recompute_codes(db, project_id)
+    audit_service.record(db, project_id, "task", task.id, "create", f"创建任务：{task.name}")
+    db.commit()
     db.refresh(task)
     return _to_read(task, _get_effective_map(db, project_id))
 
@@ -155,6 +158,7 @@ def delete_task(task_id: UUID, db: Session = Depends(get_db)) -> None:
         item.deleted_at = _utcnow()
         # 释放 WBS 编码占位，避免与活跃任务重算冲突（唯一约束覆盖含已删行）
         item.wbs_code = f"DEL-{item.id.hex[:12]}"
+    audit_service.record(db, task.project_id, "task", task.id, "delete", f"删除任务（含子任务）：{task.name}")
     db.commit()
     wbs_service.recompute_codes(db, task.project_id)
 
