@@ -55,9 +55,14 @@ export default function GanttView({
       view_mode_select: true,
       popup_on: 'click',
       move_dependencies: true,
-      on_date_change: (task: { id: string }, start: Date, end: Date) => {
-        // bar.js 传入的 end 为“结束日期的 23:59:59”，取其日期部分即可
+on_date_change: (task: { id: string | number }, start: Date, end: Date) => {
         onDateChange?.(String(task.id), toDateString(start), toDateString(end))
+      },
+      on_progress_change: (task: { id: string | number }, progress: number) => {
+        onProgressChange?.(String(task.id), Math.round(progress))
+      },
+      on_click: (task: { id: string | number }) => {
+        onTaskClick?.(String(task.id))
       },
       on_progress_change: (task: { id: string }, progress: number) => {
         onProgressChange?.(String(task.id), Math.round(progress))
