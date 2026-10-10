@@ -157,7 +157,7 @@ def chat(conversation_id: UUID, payload: AiChatRequest, db: Session = Depends(ge
         content=content,
         call_status=status,
         model_identifier=model,
-        context_digest=ai_context.build_context_digest(conv.project_id, "qa", fields) if conv.project_id else None,
+        context_digest=ai_parser.build_context_digest(conv.project_id, "qa", fields) if conv.project_id else None,
         token_usage=usage,
         error_message=err if status != "succeeded" else None,
         created_at=_utcnow(),
@@ -285,7 +285,7 @@ def _record_ai_message(db, project_id, role, content, status, model, fields) -> 
             content=content,
             call_status=status,
             model_identifier=model,
-            context_digest=ai_context.build_context_digest(project_id, "capability", fields) if project_id else None,
+            context_digest=ai_parser.build_context_digest(project_id, "capability", fields) if project_id else None,
             created_at=_utcnow(),
         )
     )
