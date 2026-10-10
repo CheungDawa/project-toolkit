@@ -1,11 +1,9 @@
 """进度快照与燃尽数据 API（T5-01/T5-02；BR-03）。"""
-from __future__ import annotations
-
 from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,7 +16,7 @@ router = APIRouter(prefix="/api", tags=["progress"])
 
 
 class SnapshotRead(BaseModel):
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     scope: str
@@ -28,7 +26,7 @@ class SnapshotRead(BaseModel):
     remaining_tasks: int
     total_hours: float
     remaining_hours: float
-    captured_at: object
+    captured_at: datetime
 
 
 class CaptureRequest(BaseModel):
