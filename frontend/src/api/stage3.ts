@@ -77,6 +77,12 @@ export interface StakeholderItem {
   demands: string | null
   strategy: string | null
   comm_frequency: string | null
+  contact_phone: string | null
+  contact_wechat: string | null
+  contact_email: string | null
+  priority: string | null
+  participation: string | null
+  sub_pos: string | null
   created_at: string
 }
 

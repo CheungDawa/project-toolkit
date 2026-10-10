@@ -55,11 +55,17 @@ export default function StakeholdersPage() {
       name: item.name,
       org: item.org,
       role: item.role,
+      sub_pos: item.sub_pos,
       influence: item.influence,
       interest: item.interest,
+      priority: item.priority,
       demands: item.demands,
       strategy: item.strategy,
       comm_frequency: item.comm_frequency,
+      participation: item.participation,
+      contact_phone: item.contact_phone,
+      contact_wechat: item.contact_wechat,
+      contact_email: item.contact_email,
     })
     setModalOpen(true)
   }
@@ -127,27 +133,69 @@ export default function StakeholdersPage() {
           dataSource={items}
           pagination={false}
           size="small"
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1200 }}
           columns={[
-            { title: '姓名/单位', dataIndex: 'name', width: 160 },
-            { title: '单位', dataIndex: 'org', width: 160, render: (v: string | null) => v ?? '-' },
-            { title: '角色', dataIndex: 'role', width: 120, render: (v: string | null) => v ?? '-' },
+            {
+              title: '干系人',
+              dataIndex: 'name',
+              width: 150,
+              render: (v: string, r) => (
+                <div>
+                  <div style={{ fontWeight: 600 }}>{v}</div>
+                  {r.sub_pos ? <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.sub_pos}</Typography.Text> : null}
+                </div>
+              ),
+            },
+            { title: '单位', dataIndex: 'org', width: 170, render: (v: string | null) => v ?? '-' },
+            { title: '角色', dataIndex: 'role', width: 130, render: (v: string | null) => v ?? '-' },
+            {
+              title: '优先级',
+              dataIndex: 'priority',
+              width: 80,
+              render: (v: string | null) =>
+                v ? <Tag color={v === 'P0' ? 'red' : v === 'P1' ? 'orange' : 'default'}>{v}</Tag> : '-',
+            },
             {
               title: '影响力/关注度',
               key: 'matrix',
-              width: 130,
+              width: 120,
               render: (_: unknown, r) => (
                 <Tag color={r.influence >= 4 ? 'red' : r.interest >= 4 ? 'orange' : 'default'}>
                   {r.influence} / {r.interest}
                 </Tag>
               ),
             },
+            {
+              title: '参与程度',
+              dataIndex: 'participation',
+              width: 170,
+              render: (v: string | null) => v ?? '-',
+            },
             { title: '诉求', dataIndex: 'demands', render: (v: string | null) => v ?? '-' },
-            { title: '沟通频率', dataIndex: 'comm_frequency', width: 100, render: (v: string | null) => v ?? '-' },
+            {
+              title: '沟通计划',
+              dataIndex: 'comm_frequency',
+              width: 130,
+              render: (v: string | null) => v ?? '-',
+            },
+            {
+              title: '联系方式',
+              key: 'contact',
+              width: 150,
+              render: (_: unknown, r) => (
+                <div style={{ fontSize: 12 }}>
+                  {r.contact_phone ? <div>📱 {r.contact_phone}</div> : null}
+                  {r.contact_wechat ? <div>💬 {r.contact_wechat}</div> : null}
+                  {r.contact_email ? <div>✉️ {r.contact_email}</div> : null}
+                  {!r.contact_phone && !r.contact_wechat && !r.contact_email ? '-' : null}
+                </div>
+              ),
+            },
             {
               title: '操作',
               key: 'actions',
               width: 200,
+              fixed: 'right',
               render: (_: unknown, r) => (
                 <Space size="small">
                   <Button size="small" icon={<MessageOutlined />} onClick={() => void openComms(r)}>
@@ -164,7 +212,7 @@ export default function StakeholdersPage() {
         />
       </Card>
 
-      <Modal title={editing ? '编辑干系人' : '登记干系人'} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => void handleOk()} width={600}>
+      <Modal title={editing ? '编辑干系人' : '登记干系人'} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => void handleOk()} width={640}>
         <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
@@ -174,20 +222,40 @@ export default function StakeholdersPage() {
               <Input />
             </Form.Item>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <Form.Item name="role" label="角色">
-              <Input placeholder="如：业主代表/监理/分包负责人" />
+              <Input placeholder="职位角色" />
             </Form.Item>
-            <Form.Item name="comm_frequency" label="沟通频率">
-              <Select allowClear options={['每周', '每两周', '每月', '按里程碑', '不定期'].map((v) => ({ value: v, label: v }))} />
+            <Form.Item name="sub_pos" label="角色分类">
+              <Input placeholder="决策层/管理层/执行层" />
+            </Form.Item>
+            <Form.Item name="priority" label="优先级">
+              <Select allowClear options={['P0', 'P1', 'P2'].map((v) => ({ value: v, label: v }))} />
             </Form.Item>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <Form.Item name="influence" label="影响力(1-5)" initialValue={3}>
               <InputNumber min={1} max={5} style={{ width: '100%' }} />
             </Form.Item>
             <Form.Item name="interest" label="关注度(1-5)" initialValue={3}>
               <InputNumber min={1} max={5} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="comm_frequency" label="沟通计划">
+              <Select allowClear mode="multiple" options={['日报', '周报', '月度远程会议', '线下会议', '按里程碑', '不定期'].map((v) => ({ value: v, label: v }))} />
+            </Form.Item>
+          </div>
+          <Form.Item name="participation" label="参与程度（如：支持（当前）；领导（期望））">
+            <Input placeholder="不知晓/抵制/中立/支持/领导 ×（当前/期望）" />
+          </Form.Item>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <Form.Item name="contact_phone" label="电话">
+              <Input />
+            </Form.Item>
+            <Form.Item name="contact_wechat" label="微信">
+              <Input />
+            </Form.Item>
+            <Form.Item name="contact_email" label="邮箱">
+              <Input />
             </Form.Item>
           </div>
           <Form.Item name="demands" label="诉求">

@@ -1,5 +1,4 @@
 import {
-  BulbOutlined,
   DownloadOutlined,
   PlusOutlined,
   UploadOutlined,
@@ -26,7 +25,6 @@ import type { DeliverableItem } from '../api/stage5'
 import {
   createDeliverable,
   deleteDeliverable,
-  deliverableCheck,
   deliverableExportUrl,
   importDeliverables,
   instantiateTemplate,
@@ -50,8 +48,6 @@ export default function DeliverablesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<DeliverableItem | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>()
-  const [aiResult, setAiResult] = useState<string | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
   const [form] = Form.useForm()
 
   const fetchData = useCallback(async () => {
@@ -155,19 +151,6 @@ export default function DeliverablesPage() {
     return false
   }
 
-  const handleAiCheck = async () => {
-    if (!projectId) return
-    setAiLoading(true)
-    try {
-      const r = await deliverableCheck(projectId)
-      setAiResult(r.content)
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : 'AI 检查失败（未配置模型时不可用）')
-    } finally {
-      setAiLoading(false)
-    }
-  }
-
   return (
     <div>
       <Card
@@ -180,9 +163,6 @@ export default function DeliverablesPage() {
               options={templates.map((t) => ({ value: t.name, label: t.name }))}
               onChange={(v) => void instantiate(String(v))}
             />
-            <Button icon={<BulbOutlined />} onClick={() => void handleAiCheck()} loading={aiLoading}>
-              AI 缺失检查
-            </Button>
             <Button icon={<DownloadOutlined />} onClick={() => window.open(deliverableExportUrl(projectId!))}>
               导出
             </Button>
@@ -202,12 +182,6 @@ export default function DeliverablesPage() {
           </Space>
         }
       >
-        {aiResult ? (
-          <Typography.Paragraph style={{ background: '#f6ffed', padding: 12, borderRadius: 8, whiteSpace: 'pre-wrap' }}>
-            <Tag color="green">AI 检查结果</Tag>
-            {aiResult}
-          </Typography.Paragraph>
-        ) : null}
         <Table<DeliverableItem>
           rowKey="id"
           size="small"

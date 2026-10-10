@@ -132,6 +132,12 @@ class Stakeholder(TimestampMixin, Base):
     demands: Mapped[str | None] = mapped_column(Text(), nullable=True)
     strategy: Mapped[str | None] = mapped_column(Text(), nullable=True)
     comm_frequency: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    contact_wechat: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    priority: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    participation: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    sub_pos: Mapped[str | None] = mapped_column(String(60), nullable=True)
 
 
 class StakeholderCommunication(TimestampMixin, Base):

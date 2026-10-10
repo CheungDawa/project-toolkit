@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -133,6 +134,34 @@ def _get_stakeholder(db: Session, stakeholder_id: UUID) -> Stakeholder:
     if stakeholder is None:
         raise AppError(404, "not_found", "干系人不存在")
     return stakeholder
+
+
+class StakeholderImportRequest(BaseModel):
+    items: list[StakeholderCreate]
+
+
+@router.post("/projects/{project_id}/stakeholders/import")
+def import_stakeholders(
+    project_id: UUID, payload: StakeholderImportRequest, db: Session = Depends(get_db)
+) -> dict:
+    """批量导入干系人（旧工具迁移用）；错误行返回序号与原因。"""
+    created = 0
+    errors: list[dict] = []
+    for index, item in enumerate(payload.items, start=1):
+        try:
+            stakeholder = Stakeholder(project_id=project_id, **item.model_dump())
+            db.add(stakeholder)
+            db.commit()
+            created += 1
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            errors.append({"row": index, "message": str(exc)})
+    audit.record(
+        db, project_id, "stakeholder", None, "import",
+        f"批量导入干系人：成功 {created} 条，失败 {len(errors)} 条",
+    )
+    db.commit()
+    return {"created": created, "errors": errors}
 
 
 # ---------- 沟通历史（P1） ----------

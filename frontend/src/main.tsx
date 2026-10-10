@@ -12,10 +12,22 @@ dayjs.locale('zh-cn')
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ConfigProvider
-      locale={zhCN}
-      theme={{ token: { colorPrimary: '#1668dc', borderRadius: 6 } }}
-    >
+      <ConfigProvider
+        locale={zhCN}
+        theme={{
+          token: {
+            colorPrimary: '#4f46e5',
+            colorInfo: '#4f46e5',
+            colorBgLayout: '#f4f5fa',
+            borderRadius: 8,
+            fontSize: 14,
+          },
+          components: {
+            Card: { boxShadowTertiary: '0 1px 2px rgba(17,20,40,.04)' },
+            Table: { headerBg: '#f7f8fc', headerSplitColor: 'transparent' },
+          },
+        }}
+      >
       <AntdApp>
         <App />
       </AntdApp>

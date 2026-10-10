@@ -154,6 +154,12 @@ class StakeholderBase(BaseModel):
     demands: str | None = None
     strategy: str | None = None
     comm_frequency: str | None = Field(default=None, max_length=30)
+    contact_phone: str | None = Field(default=None, max_length=40)
+    contact_wechat: str | None = Field(default=None, max_length=80)
+    contact_email: str | None = Field(default=None, max_length=120)
+    priority: str | None = Field(default=None, max_length=10)
+    participation: str | None = Field(default=None, max_length=80)
+    sub_pos: str | None = Field(default=None, max_length=60)
 
 
 class StakeholderCreate(StakeholderBase):
@@ -170,6 +176,12 @@ class StakeholderUpdate(BaseModel):
     demands: str | None = None
     strategy: str | None = None
     comm_frequency: str | None = Field(default=None, max_length=30)
+    contact_phone: str | None = Field(default=None, max_length=40)
+    contact_wechat: str | None = Field(default=None, max_length=80)
+    contact_email: str | None = Field(default=None, max_length=120)
+    priority: str | None = Field(default=None, max_length=10)
+    participation: str | None = Field(default=None, max_length=80)
+    sub_pos: str | None = Field(default=None, max_length=60)
 
 
 class StakeholderRead(StakeholderBase):

@@ -1,7 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import AppLayout from './components/AppLayout'
-import AiPage from './pages/AiPage'
 import AuditPage from './pages/AuditPage'
 import BaselinesPage from './pages/BaselinesPage'
 import ChangesPage from './pages/ChangesPage'
@@ -38,7 +37,6 @@ export default function App() {
           <Route path="/projects/:id/progress" element={<ProgressPage />} />
           <Route path="/projects/:id/deliverables" element={<DeliverablesPage />} />
           <Route path="/projects/:id/reports" element={<ReportsPage />} />
-          <Route path="/ai" element={<AiPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/projects" replace />} />
         </Route>
