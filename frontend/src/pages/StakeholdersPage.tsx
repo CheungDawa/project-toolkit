@@ -61,7 +61,7 @@ function parseParticipation(text: string | null): Record<string, string> {
   return result
 }
 
-function buildParticipation(attrs: Record<string, string>): string {
+function buildParticipation(attrs: Record<string, string>): string | null {
   return ATT_KEYS
     .filter((k) => attrs[k])
     .map((k) => `${ATT_NAMES[k]}（${attrs[k] === 'C' ? '当前' : '期望'}）`)
