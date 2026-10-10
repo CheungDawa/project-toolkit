@@ -17,6 +17,7 @@ import {
   Typography,
 } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import { useParams } from 'react-router-dom'
 
 import type { StakeholderItem } from '../api/stage3'
@@ -381,18 +382,13 @@ export default function StakeholdersPage() {
     },
   ]
 
-  const rowStyle = (r: TableRow): React.CSSProperties => {
+  const rowStyle = (r: TableRow): CSSProperties => {
     if (r.type === 'org') return { background: '#f0f5fa', fontWeight: 700, color: '#123c58' }
     if (r.type === 'sub') return { background: '#f6f9fc', color: '#1a5e8a' }
     return {}
   }
 
-  const countBadge = (r: TableRow) => {
-    if (r.type === 'person') return null
-    return <span style={{ fontSize: 11, color: '#6b7c8c', marginLeft: 8, fontWeight: 400 }}>{r.count} 人</span>
-  }
-
-  return (
+    return (
     <div>
       {/* 仪表盘 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(110px,1fr))', gap: 10, marginBottom: 12 }}>
