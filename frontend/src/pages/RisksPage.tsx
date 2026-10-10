@@ -28,7 +28,7 @@ import {
 } from '../api/stage3'
 import RiskMatrixChart from '../components/RiskMatrixChart'
 
-const LEVEL_TAG: Record<string, string> = { 低: 'green', 中: 'orange', 高: 'red' }
+const LEVEL_COLORS: Record<string, string> = { 低: 'green', 中: 'orange', 高: 'red' }
 
 export default function RisksPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -208,7 +208,7 @@ export default function RisksPage() {
               render: (_: unknown, r) => (
                 <span>
                   {r.probability}×{r.impact} = <b>{r.score}</b>{' '}
-                  <Tag color={LEVEL_TAB[r.level ?? '中']}>{r.level}</Tag>
+                  <Tag color={LEVEL_COLORS[r.level ?? '中']}>{r.level}</Tag>
                 </span>
               ),
             },
@@ -285,7 +285,7 @@ export default function RisksPage() {
           pagination={false}
           columns={[
             { title: '评分', key: 'score', render: (_: unknown, r) => `${r.probability}×${r.impact} = ${r.score}` },
-            { title: '等级', dataIndex: 'level', width: 70, render: (v: string) => (v ? <Tag color={LEVEL_TAB[v]}>{v}</Tag> : '-') },
+            { title: '等级', dataIndex: 'level', width: 70, render: (v: string) => (v ? <Tag color={LEVEL_COLORS[v]}>{v}</Tag> : '-') },
             { title: '时间', dataIndex: 'assessed_at', width: 170, render: (v: string) => v.slice(0, 16).replace('T', ' ') },
             { title: '依据', dataIndex: 'basis', render: (v: string | null) => v ?? '-' },
           ]}
