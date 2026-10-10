@@ -36,10 +36,6 @@ const PROJECT_MODULES = [
   { key: 'audit', label: '审计日志', icon: <AuditOutlined />, path: 'audit' },
 ]
 
-const MODULE_TITLES: Record<string, string> = Object.fromEntries(
-  PROJECT_MODULES.map((m) => [`/projects/any/${m.path}`, m.label]),
-)
-
 function useProjectIdFromPath(): string | null {
   const params = useParams()
   return params.id ?? null
