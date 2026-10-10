@@ -28,7 +28,8 @@ from alembic.config import Config  # noqa: E402
 
 
 def _reset_test_database() -> None:
-    with psycopg.connect(ADMIN_URL, autocommit=True) as conn:
+    # psycopg3 不识别 SQLAlchemy 方言后缀 "+psycopg"，仅连接串需剥离；Alembic/SQLAlchemy 仍用带方言 URL
+    with psycopg.connect(ADMIN_URL.replace("+psycopg", ""), autocommit=True) as conn:
         exists = conn.execute(
             "SELECT 1 FROM pg_database WHERE datname = %s", (TEST_DB_NAME,)
         ).fetchone()
