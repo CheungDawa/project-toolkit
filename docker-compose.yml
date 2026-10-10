@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
     ports:
-      - "${PT_HTTP_PORT:-8080}:80"
+      - "${PT_HTTP_PORT:-8180}:80"
     depends_on:
       backend:
         condition: service_started
