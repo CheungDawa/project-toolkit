@@ -44,10 +44,6 @@ function calcPriority(influence: number, interest: number): string {
   return 'P2'
 }
 
-function decodeCodes(code: string | null, table: Record<string, string>): string[] {
-  return [...(code || '').toUpperCase()].filter((c) => table[c]).map((c) => table[c])
-}
-
 function parseParticipation(text: string | null): Record<string, string> {
   const result: Record<string, string> = {}
   if (!text) return result
