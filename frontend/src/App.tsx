@@ -5,11 +5,14 @@ import AiPage from './pages/AiPage'
 import AuditPage from './pages/AuditPage'
 import BaselinesPage from './pages/BaselinesPage'
 import ChangesPage from './pages/ChangesPage'
+import DeliverablesPage from './pages/DeliverablesPage'
 import GanttPage from './pages/GanttPage'
 import IssuesPage from './pages/IssuesPage'
 import MilestonesPage from './pages/MilestonesPage'
+import ProgressPage from './pages/ProgressPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
 import ProjectListPage from './pages/ProjectListPage'
+import ReportsPage from './pages/ReportsPage'
 import RisksPage from './pages/RisksPage'
 import SettingsPage from './pages/SettingsPage'
 import StakeholdersPage from './pages/StakeholdersPage'
@@ -32,6 +35,9 @@ export default function App() {
           <Route path="/projects/:id/changes" element={<ChangesPage />} />
           <Route path="/projects/:id/stakeholders" element={<StakeholdersPage />} />
           <Route path="/projects/:id/audit" element={<AuditPage />} />
+          <Route path="/projects/:id/progress" element={<ProgressPage />} />
+          <Route path="/projects/:id/deliverables" element={<DeliverablesPage />} />
+          <Route path="/projects/:id/reports" element={<ReportsPage />} />
           <Route path="/ai" element={<AiPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/projects" replace />} />

@@ -29,6 +29,11 @@ from app.models.ai import (  # noqa: F401  注册模型元数据
     AiConversation,
     AiMessage,
 )
+from app.models.stage5 import (  # noqa: F401  注册模型元数据
+    Attachment,
+    Deliverable,
+    ProgressSnapshot,
+)
 
 config = context.config
 

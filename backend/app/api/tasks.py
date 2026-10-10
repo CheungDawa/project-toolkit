@@ -26,6 +26,7 @@ from app.services import cycle as cycle_service
 from app.services import progress as progress_service
 from app.services import wbs as wbs_service
 from app.services import audit as audit_service
+from app.services import snapshot as snapshot_service
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
@@ -125,6 +126,7 @@ def create_task(project_id: UUID, payload: TaskCreate, db: Session = Depends(get
     wbs_service.recompute_codes(db, project_id)
     audit_service.record(db, project_id, "task", task.id, "create", f"创建任务：{task.name}")
     db.commit()
+    snapshot_service.maybe_capture_daily(db, project_id)
     db.refresh(task)
     return _to_read(task, _get_effective_map(db, project_id))
 
@@ -147,6 +149,7 @@ def update_task(task_id: UUID, payload: TaskUpdate, db: Session = Depends(get_db
     _apply_dates_and_duration(db, task)
     db.commit()
     db.refresh(task)
+    snapshot_service.maybe_capture_daily(db, task.project_id)
     return _to_read(task, _get_effective_map(db, task.project_id))
 
 
@@ -161,6 +164,7 @@ def delete_task(task_id: UUID, db: Session = Depends(get_db)) -> None:
     audit_service.record(db, task.project_id, "task", task.id, "delete", f"删除任务（含子任务）：{task.name}")
     db.commit()
     wbs_service.recompute_codes(db, task.project_id)
+    snapshot_service.maybe_capture_daily(db, task.project_id)
 
 
 @router.post("/tasks/{task_id}/copy", response_model=TaskRead)
@@ -169,6 +173,7 @@ def copy_task(task_id: UUID, db: Session = Depends(get_db)) -> TaskRead:
     copied = _copy_subtree(db, source, None)
     db.commit()
     wbs_service.recompute_codes(db, source.project_id)
+    snapshot_service.maybe_capture_daily(db, source.project_id)
     return _to_read(copied, _get_effective_map(db, source.project_id))
 
 
@@ -229,6 +234,7 @@ def reorder_task(project_id: UUID, payload: TaskReorder, db: Session = Depends(g
         item.sort_order = position
     db.commit()
     wbs_service.recompute_codes(db, project_id)
+    snapshot_service.maybe_capture_daily(db, project_id)
     return {"ok": True}
 
 

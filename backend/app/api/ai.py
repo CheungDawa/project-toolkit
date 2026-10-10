@@ -274,6 +274,35 @@ def ask(project_id: UUID, payload: AiChatRequest, db: Session = Depends(get_db))
     return {"content": content, "model": model, "usage": usage}
 
 
+@router.post("/projects/{project_id}/deliverable-check")
+def deliverable_check(project_id: UUID, db: Session = Depends(get_db)) -> dict:
+    """AI-5：交付清单缺失检查（依赖阶段 5 交付资料模块）。"""
+    _require_config(db)
+    from sqlalchemy import select as sa_select
+    from app.models.stage5 import Deliverable
+    from app.services.ai.context import _fmt_date as _fmt
+
+    items = list(db.scalars(sa_select(Deliverable).where(Deliverable.project_id == project_id)))
+    lines = []
+    for idx, item in enumerate(items, start=1):
+        lines.append(
+            f"- {idx} [{item.category or '-'}] {item.name}（提交:{item.submit_status} 审核:{item.review_status} "
+            f"期限:{_fmt(item.plan_date)} 责任人:{item.owner or '-'}）"
+        )
+    context_text = "\n".join(lines) or "（暂无交付资料条目）"
+    system = (
+        "你是项目交付资料检查助手。基于交付清单（含提交/审核状态），指出缺失项、即将逾期项与补齐全建议。"
+        "逐条引用条目序号。仅使用给定数据，缺失标注信息不足。用中文。"
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"交付清单：\n{context_text}"},
+    ]
+    content, usage, model = _call(db, messages)
+    _record_ai_message(db, project_id, "assistant", content, "succeeded", model, ["deliverables.*"])
+    return {"content": content, "model": model, "usage": usage}
+
+
 def _record_ai_message(db, project_id, role, content, status, model, fields) -> None:
     conv = AiConversation(project_id=project_id, title="AI 能力调用", created_at=_utcnow(), updated_at=_utcnow())
     db.add(conv)

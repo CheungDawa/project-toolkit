@@ -1,11 +1,13 @@
 import {
   ApartmentOutlined,
   ArrowLeftOutlined,
+  AuditOutlined,
   BarChartOutlined,
   BugOutlined,
   DeleteOutlined,
   EditOutlined,
   FileDoneOutlined,
+  FileTextOutlined,
   FlagOutlined,
   FundProjectionScreenOutlined,
   InboxOutlined,
@@ -30,13 +32,13 @@ const ACTIVE_MODULES = [
   { icon: <BugOutlined />, name: '问题', to: (id: string) => `/projects/${id}/issues` },
   { icon: <FundProjectionScreenOutlined />, name: '变更', to: (id: string) => `/projects/${id}/changes` },
   { icon: <TeamOutlined />, name: '干系人', to: (id: string) => `/projects/${id}/stakeholders` },
-  { icon: <FileDoneOutlined />, name: '审计日志', to: (id: string) => `/projects/${id}/audit` },
+  { icon: <FileDoneOutlined />, name: '交付资料', to: (id: string) => `/projects/${id}/deliverables` },
+  { icon: <BarChartOutlined />, name: '燃尽图/快照', to: (id: string) => `/projects/${id}/progress` },
+  { icon: <FileTextOutlined />, name: '报告中心', to: (id: string) => `/projects/${id}/reports` },
+  { icon: <AuditOutlined />, name: '审计日志', to: (id: string) => `/projects/${id}/audit` },
 ]
 
-const FUTURE_CARDS = [
-  { icon: <FileDoneOutlined />, name: '交付资料', phase: '阶段 5' },
-  { icon: <BarChartOutlined />, name: '燃尽图/快照', phase: '阶段 5' },
-]
+const FUTURE_CARDS: never[] = []
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -171,7 +173,7 @@ export default function ProjectDetailPage() {
 
       <Card title="项目模块" style={{ marginTop: 16 }}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          阶段 2 已启用：WBS / 甘特 / 里程碑 / 基线。其余模块在对应阶段启用。
+          全部 12 个模块已启用（阶段 1-5 完成）；部署加固与最终验收见阶段 6。
         </Typography.Paragraph>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
           {ACTIVE_MODULES.map((m) => (
