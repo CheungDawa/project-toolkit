@@ -1,6 +1,5 @@
 import {
   ApartmentOutlined,
-  ArchiveOutlined,
   ArrowLeftOutlined,
   BarChartOutlined,
   BugOutlined,
@@ -9,6 +8,7 @@ import {
   FileDoneOutlined,
   FlagOutlined,
   FundProjectionScreenOutlined,
+  InboxOutlined,
   LinkOutlined,
   TeamOutlined,
   WarningOutlined,
@@ -120,7 +120,7 @@ export default function ProjectDetailPage() {
               title="确认归档该项目？"
               onConfirm={() => void handleArchive()}
             >
-              <Button icon={<ArchiveOutlined />} disabled={!!project.archived_at}>
+              <Button icon={<InboxOutlined />} disabled={!!project.archived_at}>
                 归档
               </Button>
             </Popconfirm>

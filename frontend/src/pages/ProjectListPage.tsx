@@ -1,8 +1,8 @@
 import {
-  ArchiveOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
+  InboxOutlined,
   PlusOutlined,
 } from '@ant-design/icons'
 import { App, Button, Card, Input, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd'
@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { archiveProject, createProject, deleteProject, listProjects, updateProject } from '../api/projects'
 import type { Project, ProjectPayload } from '../api/projects'
-import ProjectFormModal, { PHASE_OPTIONS, STATUS_OPTIONS } from '../components/ProjectFormModal'
+import ProjectFormModal, { STATUS_OPTIONS } from '../components/ProjectFormModal'
 
 const PAGE_SIZE = 10
 
@@ -146,7 +146,7 @@ export default function ProjectListPage() {
               description="归档后从默认列表隐藏，可在“仅归档”视图查看"
               onConfirm={() => void handleArchive(record)}
             >
-              <Button size="small" icon={<ArchiveOutlined />}>
+              <Button size="small" icon={<InboxOutlined />}>
                 归档
               </Button>
             </Popconfirm>

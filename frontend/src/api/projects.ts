@@ -64,7 +64,7 @@ function buildQuery(query: ProjectQuery): string {
 }
 
 export const listProjects = (query: ProjectQuery = {}) =>
-  api.get<ProjectPage>(`/projects${queryToString(query)}`)
+  api.get<ProjectPage>(`/projects${buildQuery(query)}`)
 
 export const getProject = (id: string) => api.get<Project>(`/projects/${id}`)
 
@@ -76,16 +76,3 @@ export const updateProject = (id: string, payload: Partial<ProjectPayload>) =>
 export const archiveProject = (id: string) => api.post<Project>(`/projects/${id}/archive`)
 
 export const deleteProject = (id: string) => api.delete(`/projects/${id}`)
-
-function buildQuery(query: ProjectQuery): string {
-  const params = new URLSearchParams()
-  if (query.q) params.set('q', query.q)
-  if (query.status) params.set('status', query.status)
-  if (query.phase) params.set('phase', query.phase)
-  if (query.archived) params.set('archived', query.archived)
-  if (query.sort) params.set('sort', query.sort)
-  if (query.page) params.set('page', String(query.page))
-  if (query.size) params.set('size', String(query.size))
-  const qs = params.toString()
-  return qs ? `?${qs}` : ''
-}
