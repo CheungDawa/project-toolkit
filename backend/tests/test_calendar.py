@@ -5,7 +5,7 @@ from app.services import calendar as calendar_service
 
 
 def _calendar(**overrides):
-    data = {"weekends": [0, 6], "holidays": [], "extra_workdays": set(), "extra_holidays": set()}
+    data = {"weekends": [5, 6], "holidays": [], "extra_workdays": set(), "extra_holidays": set()}
     data.update(overrides)
     return data
 

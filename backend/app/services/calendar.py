@@ -24,7 +24,8 @@ def _get_json(db: Session, key: str) -> dict:
 
 def load_calendar(db: Session, project_id: UUID | None = None) -> dict:
     global_data = _get_json(db, GLOBAL_KEY)
-    weekends: list[int] = global_data.get("weekends", [0, 6])
+    # Python date.weekday() 约定：周一=0 ... 周日=6；周六=5、周日=6
+    weekends: list[int] = global_data.get("weekends", [5, 6])
     holidays: set[str] = {str(d) for d in global_data.get("holidays", [])}
 
     extra_workdays: set[str] = set()
@@ -78,10 +79,12 @@ def advance_workdays(start: date, workdays: int, calendar: dict) -> date:
 
 
 def calendar_payload(calendar: dict) -> dict:
-    """供前端甘特配置（frappe-gantt holidays/ignore 使用）。"""
+    """供前端甘特配置（frappe-gantt 使用 JS getDay：周日=0）。"""
     holiday_dates = sorted(set(calendar["holidays"]) | calendar["extra_holidays"])
+    # Python weekday(周一=0) → JS getDay(周日=0)： (w+1) % 7
+    js_weekends = sorted({(w + 1) % 7 for w in calendar["weekends"]})
     return {
-        "weekends": calendar["weekends"],
+        "weekends": js_weekends,
         "holidays": holiday_dates,
         "extra_workdays": sorted(calendar["extra_workdays"]),
     }

@@ -1,5 +1,6 @@
 """任务 API：CRUD / 树 / 排序 / 复制 / 删除 / Excel 导入导出（阶段 2 WBS条1-7）。"""
 import io
+import uuid
 from datetime import date, datetime, timezone
 from uuid import UUID
 
@@ -102,7 +103,7 @@ def create_task(project_id: UUID, payload: TaskCreate, db: Session = Depends(get
         project_id=project_id,
         parent_id=parent_id,
         sort_order=max((t.sort_order for t in siblings), default=-1) + 1,
-        wbs_code="0",
+        wbs_code=str(uuid.uuid4()),  # 占位唯一，提交后 recompute 重算真实编码
         name=payload.name,
         owner=payload.owner,
         collaborators=list(payload.collaborators or []),
@@ -170,7 +171,7 @@ def _copy_subtree(db: Session, source: Task, new_parent_id: UUID | None) -> Task
         project_id=source.project_id,
         parent_id=new_parent_id,
         sort_order=source.sort_order,
-        wbs_code=source.wbs_code,
+        wbs_code=str(uuid.uuid4()),  # 占位唯一，提交后重算
         name=f"{source.name}（副本）" if new_parent_id is None else source.name,
         owner=source.owner,
         collaborators=list(source.collaborators or []),
@@ -291,7 +292,7 @@ async def import_tasks(
             task = Task(
                 project_id=project_id,
                 parent_id=parent.id if parent else None,
-                wbs_code="0",
+                wbs_code=str(uuid.uuid4()),  # 占位唯一，导入完成后重算
                 name=str(name).strip(),
                 owner=str(owner).strip() if owner not in (None, "") else None,
                 status=str(status).strip() if status not in (None, "") else "未开始",
