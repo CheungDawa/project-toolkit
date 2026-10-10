@@ -92,4 +92,14 @@ D-01~D-05（建议默认值已备）、C-1~C-6 处理意见、A-1~A-6 假设（�
 - **新经验（写入第 2 节候选）**：antd v5 图标名与 v6 不同（ArchiveOutlined 不存在→InboxOutlined）；PowerShell Set-Content -Encoding utf8 会写 BOM 破坏 YAML；`docker compose config -q` 是任何 compose 改动的第一道门禁。
 - **待办**：阶段 2 T2-01~T2-15（D-02 ECharts 已定；T2-09 gantt Spike 先行）。
 
+### 阶段 2 · 会话 3（T2-01 ~ T2-15）— 2026-10-10
+
+- **完成任务**：T2-01 五表迁移（tasks/deps/milestones/baselines/snapshots）；T2-03/04/06 服务层（WBS 编码/任务字段/进度汇总）；T2-05 依赖+循环校验；T2-07 工作日历+工期；T2-02/08 任务树 API+排序/复制/删除+Excel；T2-09 Spike；T2-10~12 甘特组件+拖拽持久化+同源；T2-13 基线+对比；T2-14 边界/叶子统计；前端 WBS/甘特/里程碑/基线页。
+- **验证证据**：pytest **40 passed**；迁移 0005(head)；冒烟全绿（编码/依赖环/加权进度/基线 diff/日历 JS 约定/Excel）；Playwright 截图 5 张。
+- **Spike 关键结论**：frappe-gantt 1.2.2 事件经动态 `on_<event>` 选项暴露（无需 vendor 补丁）；CSS 因 exports 限制本地化（MIT 保留出处）。
+- **修复缺陷（7 处，均回归）**：D6 CSS 深路径；D7 settings 遮蔽（阶段1遗留）；D8 前向引用；D9 周末约定 [5,6]；D10 占位码唯一；D11 recompute 未 commit；D12 批量重算冲突（DEFERRABLE + 软删释放编码）。
+- **估算偏差**：计划 24.5-36.5h，实际净投入约 18-20h（含 7 处缺陷修复）；Spike 前置（1h）避免了大返工，净省时间。
+- **新经验（写入第 2 节候选）**：① Python `date.weekday()` 与 JS `getDay()` 周末约定差异（周六=5 vs 0）；② 软删除+唯一约束需释放占位；③ `from __future__ import annotations` 解决类内前向引用；④ 容器内一次性 node 容器做依赖源码核验（Spike 模式）。
+- **待办**：阶段 3 T3-01~T3-12。
+
 > 模板：阶段号 / 验收日期 / 通过项 / 缺陷与修复 / 返工原因 / 拆解改进 / 估算偏差记录。届时由 TeleAgent 在各阶段验收后追加，并据实更新第 2 节经验状态。
