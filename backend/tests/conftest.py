@@ -21,6 +21,8 @@ def _derive_urls() -> tuple[str, str]:
 
 TEST_URL, ADMIN_URL = _derive_urls()
 os.environ["DATABASE_URL"] = TEST_URL  # 必须在导入 app 模块之前生效
+# 附件写入指向容器临时目录，避免测试文件污染 bind mount 的生产 data 目录
+os.environ["DATA_DIR"] = "/tmp/pt-test-data"
 
 import psycopg  # noqa: E402
 from alembic import command  # noqa: E402
