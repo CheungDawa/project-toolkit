@@ -21,11 +21,14 @@ import { archiveProject, deleteProject, getProject, updateProject } from '../api
 import type { Project, ProjectPayload } from '../api/projects'
 import ProjectFormModal from '../components/ProjectFormModal'
 
+const ACTIVE_MODULES = [
+  { icon: <ApartmentOutlined />, name: 'WBS 任务', to: (id: string) => `/projects/${id}/wbs` },
+  { icon: <BarChartOutlined />, name: '甘特图', to: (id: string) => `/projects/${id}/gantt` },
+  { icon: <FlagOutlined />, name: '里程碑', to: (id: string) => `/projects/${id}/milestones` },
+  { icon: <LinkOutlined />, name: '计划基线', to: (id: string) => `/projects/${id}/baselines` },
+]
+
 const FUTURE_CARDS = [
-  { icon: <ApartmentOutlined />, name: 'WBS 任务', phase: '阶段 2' },
-  { icon: <BarChartOutlined />, name: '甘特图', phase: '阶段 2' },
-  { icon: <FlagOutlined />, name: '里程碑', phase: '阶段 2' },
-  { icon: <LinkOutlined />, name: '计划基线', phase: '阶段 2' },
   { icon: <WarningOutlined />, name: '风险', phase: '阶段 3' },
   { icon: <BugOutlined />, name: '问题', phase: '阶段 3' },
   { icon: <FundProjectionScreenOutlined />, name: '变更', phase: '阶段 3' },
@@ -166,9 +169,18 @@ export default function ProjectDetailPage() {
 
       <Card title="项目模块" style={{ marginTop: 16 }}>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          以下模块将在对应开发阶段启用，当前均为待开发状态。
+          阶段 2 已启用：WBS / 甘特 / 里程碑 / 基线。其余模块在对应阶段启用。
         </Typography.Paragraph>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+          {ACTIVE_MODULES.map((m) => (
+            <Card key={m.name} size="small" hoverable onClick={() => navigate(m.to(project.id))}>
+              <Space>
+                {m.icon}
+                <span>{m.name}</span>
+                <Tag color="green">已启用</Tag>
+              </Space>
+            </Card>
+          ))}
           {FUTURE_CARDS.map((m) => (
             <Card key={m.name} size="small" style={{ opacity: 0.55, background: '#fafafa' }}>
               <Space>
