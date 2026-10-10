@@ -48,9 +48,10 @@ def list_tasks_ordered(db: Session, project_id: UUID) -> list[Task]:
 
 
 def recompute_codes(db: Session, project_id: UUID) -> None:
-    """对项目内全部任务重算编码并落库。"""
+    """对项目内全部任务重算编码并落库（赋值后必须 commit）。"""
     tasks = list_tree_tasks(db, project_id)
     assign_wbs_codes(tasks)
+    db.commit()
 
 
 def find_subtree_ids(db: Session, project_id: UUID, root_id: UUID) -> set[UUID]:

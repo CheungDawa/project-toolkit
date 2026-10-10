@@ -1,8 +1,8 @@
 """依赖管理与循环校验测试（A2-4）。"""
 
 
-def _project(client) -> str:
-    resp = client.post("/api/projects", json={"code": "DEP-001", "name": "依赖测试"})
+def _project(client, code="DEP-001") -> str:
+    resp = client.post("/api/projects", json={"code": code, "name": "依赖测试"})
     return resp.json()["id"]
 
 
@@ -55,7 +55,7 @@ def test_dependency_list_and_delete(client):
 
 
 def test_dependency_across_projects_rejected(client):
-    pid1, pid2 = _project(client), _project(client)
+    pid1, pid2 = _project(client, "DEP-001"), _project(client, "DEP-002")
     a = _task(client, pid1, "A")
     b = _task(client, pid2, "B")
     resp = _dep(client, pid1, a, b)
