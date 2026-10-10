@@ -96,7 +96,7 @@ class IssueUpdate(IssueBase):
 
 
 class IssueClose(BaseModel):
-    closure_result: str = Field(min_length=1, description="关闭结论（必填）")
+    closure_result: str | None = Field(default=None, description="关闭结论（必填，业务层校验）")
     verified_at: datetime | None = None
     verified_by: str | None = Field(default=None, max_length=100)
 
