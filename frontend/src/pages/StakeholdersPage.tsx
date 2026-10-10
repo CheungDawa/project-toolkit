@@ -283,7 +283,7 @@ export default function StakeholdersPage() {
   )
 
   // ==================== 表格列（区分 group / sub / person） ====================
-  const cellFor = (r: TableRow, personRender: (d: StakeholderItem) => React.ReactNode, groupText = ''): React.ReactNode => {
+  const cellFor = (r: TableRow, personRender: (d: StakeholderItem) => ReactNode, groupText = ''): ReactNode => {
     if (r.type === 'org') return <span style={{ fontWeight: 700, fontSize: 13, color: '#123c58' }}>{groupText}</span>
     if (r.type === 'sub') return <span style={{ fontWeight: 600, fontSize: 12, color: '#1a5e8a', paddingLeft: 20 }}>{groupText}</span>
     return personRender(r.data!)
@@ -296,7 +296,7 @@ export default function StakeholdersPage() {
     width?: number
     align?: 'left' | 'center' | 'right'
     fixed?: 'right'
-    render: (_: unknown, record: TableRow) => React.ReactNode
+    render: (_: unknown, record: TableRow) => ReactNode
   }[] = [
     {
       title: '干系人', key: 'name', width: 140,
