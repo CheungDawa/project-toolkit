@@ -1,5 +1,5 @@
 import Gantt from 'frappe-gantt'
-import 'frappe-gantt/dist/frappe-gantt.css'
+import '../assets/frappe-gantt.css'
 import { useEffect, useRef } from 'react'
 
 export interface GanttItemInput {
