@@ -15,7 +15,6 @@ import {
   Space,
   Table,
   Tag,
-  Typography,
   Upload,
 } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
