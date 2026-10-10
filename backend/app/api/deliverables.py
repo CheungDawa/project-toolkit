@@ -86,7 +86,7 @@ def instantiate_template(project_id: UUID, payload: dict, db: Session = Depends(
     for item in template.get("items", []):
         existing = db.scalar(
             select(Deliverable).where(
-                Deliverable.project_id == UUID(project_id),
+                Deliverable.project_id == project_id,
                 Deliverable.template_id == name,
                 Deliverable.name == item.get("name"),
             )
@@ -94,7 +94,7 @@ def instantiate_template(project_id: UUID, payload: dict, db: Session = Depends(
         if existing is None:
             db.add(
                 Deliverable(
-                    project_id=UUID(project_id),
+                    project_id=project_id,
                     template_id=name,
                     category=item.get("category"),
                     name=item.get("name"),
