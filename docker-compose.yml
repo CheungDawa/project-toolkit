@@ -1,4 +1,4 @@
-name: project-toolkit
+﻿name: project-toolkit
 
 services:
   frontend:
@@ -54,7 +54,7 @@ services:
       timeout: 3s
       retries: 12
 
-backup:
+  backup:
     image: postgres:17-alpine
     profiles: ["backup"]
     environment:
@@ -66,10 +66,10 @@ backup:
       - -c
       - |
         while true; do
-          echo "[backup] $(date +'%F %T') 每日备份开始"
+          echo "[backup] $(date +'%F %T') 姣忔棩澶囦唤寮€濮?
           pg_dump -h db -U pt -d projecttoolkit -Fc | gzip > /backups/pt_$(date +%Y%m%d_%H%M%S).dump.gz
           find /backups -name 'pt_*.dump.gz' -mtime +14 -delete
-          echo "[backup] 完成，等待 24 小时"
+          echo "[backup] 瀹屾垚锛岀瓑寰?24 灏忔椂"
           sleep 86400
         done
     depends_on:
@@ -78,3 +78,4 @@ backup:
 
 volumes:
   postgres-data:
+
