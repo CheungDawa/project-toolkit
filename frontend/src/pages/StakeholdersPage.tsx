@@ -154,29 +154,7 @@ export default function StakeholdersPage() {
     return { p0, p1, p2, hiInfluence, total }
   }, [filtered])
 
-  // ==================== 分组（单位→角色分类） ====================
-  type GroupedData = {
-    org: string
-    subGroups: { subPos: string; children: StakeholderItem[] }[]
-    children: StakeholderItem[]
-  }
-
-  const groupedData = useMemo((): GroupedData[] => {
-    const map = new Map<string, Map<string, StakeholderItem[]>>()
-    for (const row of filtered) {
-      const org = row.org || '未分类'
-      const subPos = row.sub_pos || '未分类'
-      if (!map.has(org)) map.set(org, new Map())
-      const subMap = map.get(org)!
-      if (!subMap.has(subPos)) subMap.set(subPos, [])
-      subMap.get(subPos)!.push(row)
-    }
-    return [...map.entries()].map(([org, subMap]) => ({
-      org,
-      subGroups: [...subMap.entries()].map(([subPos, children]) => ({ subPos, children })),
-      children: [...subMap.values()].flat(),
-    }))
-  }, [filtered])
+  const filtered = useMemo(() => {
 
   // ==================== 矩阵象限分配 ====================
   const quadMap = useMemo(() => {
