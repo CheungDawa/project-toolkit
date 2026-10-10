@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api", tags=["deliverables"])
 TEMPLATE_KEY = "deliverable.templates"
 DEFAULT_TEMPLATES = [
     {
-        "name": "信息化项目交付清单（默认）",
+        "name": "信息化集成交付清单（默认）",
         "items": [
             {"category": "设备到货", "name": "到货签收单"},
             {"category": "安装调试", "name": "安装调试记录"},

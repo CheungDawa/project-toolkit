@@ -19,12 +19,12 @@ def _task(client, pid, name, **extra) -> dict:
 
 def test_snapshot_captured_and_burndown_real(client):
     pid = _project(client)
-    # 手动快照（空项目）
-    s1 = client.post(f"/api/projects/{pid}/snapshots")
+    # 补录历史快照（空项目）
+    s1 = client.post(f"/api/projects/{pid}/snapshots", json={"date": "2026-09-30"})
     assert s1.status_code == 201
     assert s1.json()["total_tasks"] == 0
 
-    # 创建任务后手动快照
+    # 创建任务后手动快照（今天）
     _task(client, pid, "A", status="进行中", work_hours=10)
     _task(client, pid, "B", status="已完成", work_hours=5)
     s2 = client.post(f"/api/projects/{pid}/snapshots").json()
@@ -38,7 +38,7 @@ def test_snapshot_captured_and_burndown_real(client):
     dates = [p["date"] for p in burndown["snapshots"]]
     assert len(dates) == 2  # 两条真实记录
     assert burndown["snapshots"][-1]["remaining_tasks"] == 1
-    # 理想线存在（从首快照到 plan_end=2026-12-31，仅生成到今天）
+    # 理想线存在（从首快照到 plan_end，仅生成到今天）
     assert burndown["ideal"]
 
 

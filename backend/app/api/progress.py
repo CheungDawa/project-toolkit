@@ -31,9 +31,17 @@ class SnapshotRead(BaseModel):
     captured_at: object
 
 
+class CaptureRequest(BaseModel):
+    date: date | None = None  # 补录历史（≤ 今天）
+
+
 @router.post("/projects/{project_id}/snapshots", status_code=201)
-def capture_snapshot(project_id: UUID, db: Session = Depends(get_db)) -> dict:
-    snap = snapshot_service.capture_snapshot(db, project_id)
+def capture_snapshot(project_id: UUID, payload: CaptureRequest | None = None, db: Session = Depends(get_db)) -> dict:
+    target = payload.date if payload and payload.date else None
+    if target and target > date.today():
+        from app.core.errors import AppError
+        raise AppError(422, "future_date", "不能补录未来日期")
+    snap = snapshot_service.capture_snapshot(db, project_id, target)
     db.commit()
     return _snapshot_dict(snap)
 

@@ -71,24 +71,15 @@ def capture_snapshot(db: Session, project_id: UUID, snapshot_date: date | None =
 
 
 def maybe_capture_daily(db: Session, project_id: UUID) -> None:
-    """按 snapshot.policy.mode=daily_first_write：当天首次写操作后采集。"""
+    """按 snapshot.policy：开启时在写操作后采集/更新当日快照（当日保持最新状态）。"""
     from app.models.setting import Setting
     setting = db.scalar(select(Setting).where(Setting.key == SNAPSHOT_KEY))
     policy = setting.value if setting and isinstance(setting.value, dict) else {}
     mode = policy.get("mode", DEFAULT_POLICY["mode"])
     if mode == "off":
         return
-    today = _utcnow().date()
-    exists = db.scalar(
-        select(ProgressSnapshot.id).where(
-            ProgressSnapshot.project_id == project_id,
-            ProgressSnapshot.scope == "project",
-            ProgressSnapshot.snapshot_date == today,
-        )
-    )
-    if exists is None:
-        db.add(capture_snapshot(db, project_id, today))
-        db.commit()
+    db.add(capture_snapshot(db, project_id))
+    db.commit()
 
 
 def list_snapshots(db: Session, project_id: UUID, limit: int = 500) -> list[ProgressSnapshot]:
