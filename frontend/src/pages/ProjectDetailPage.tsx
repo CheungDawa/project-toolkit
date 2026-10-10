@@ -38,8 +38,6 @@ const ACTIVE_MODULES = [
   { icon: <AuditOutlined />, name: '审计日志', to: (id: string) => `/projects/${id}/audit` },
 ]
 
-const FUTURE_CARDS: never[] = []
-
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -182,15 +180,6 @@ export default function ProjectDetailPage() {
                 {m.icon}
                 <span>{m.name}</span>
                 <Tag color="green">已启用</Tag>
-              </Space>
-            </Card>
-          ))}
-          {FUTURE_CARDS.map((m) => (
-            <Card key={m.name} size="small" style={{ opacity: 0.55, background: '#fafafa' }}>
-              <Space>
-                {m.icon}
-                <span>{m.name}</span>
-                <Tag color="default">{m.phase} 待开发</Tag>
               </Space>
             </Card>
           ))}

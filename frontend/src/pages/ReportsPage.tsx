@@ -1,4 +1,4 @@
-import { DownloadOutlined, FileTextOutlined } from '@ant-design/icons'
+import { DownloadOutlined } from '@ant-design/icons'
 import { App, Button, Card, Space, Tag, Typography } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
