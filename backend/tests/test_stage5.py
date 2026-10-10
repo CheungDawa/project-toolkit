@@ -20,7 +20,7 @@ def _task(client, pid, name, **extra) -> dict:
 def test_snapshot_captured_and_burndown_real(client):
     pid = _project(client)
     # 补录历史快照（空项目）
-    s1 = client.post(f"/api/projects/{pid}/snapshots", json={"date": "2026-09-30"})
+    s1 = client.post(f"/api/projects/{pid}/snapshots", json={"snapshot_date": "2026-09-30"})
     assert s1.status_code == 201
     assert s1.json()["total_tasks"] == 0
 
