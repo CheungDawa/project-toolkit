@@ -12,6 +12,18 @@ from app.schemas.setting import SettingRead, SettingUpdate
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
+MASKED_KEYS = {"model.default"}
+
+
+def _mask_value(setting: Setting) -> Setting:
+    """密钥类配置脱敏（永不回传完整 api_key——NFR-05）。"""
+    if setting.key in MASKED_KEYS and isinstance(setting.value, dict) and setting.value.get("api_key"):
+        copy_value = dict(setting.value)
+        key = str(copy_value["api_key"])
+        copy_value["api_key"] = f"{key[:3]}****{key[-4:]}" if len(key) > 7 else "已设置"
+        setting.value = copy_value
+    return setting
+
 
 def _get_or_404(db: Session, key: str) -> Setting:
     setting = db.scalar(select(Setting).where(Setting.key == key))
@@ -22,12 +34,13 @@ def _get_or_404(db: Session, key: str) -> Setting:
 
 @router.get("", response_model=list[SettingRead])
 def list_settings(db: Session = Depends(get_db)) -> Any:
-    return list(db.scalars(select(Setting).order_by(Setting.key)).all())
+    settings = list(db.scalars(select(Setting).order_by(Setting.key)).all())
+    return [_mask_value(item) for item in settings]
 
 
 @router.get("/{key}", response_model=SettingRead)
 def get_setting(key: str, db: Session = Depends(get_db)) -> Any:
-    return _get_or_404(db, key)
+    return _mask_value(_get_or_404(db, key))
 
 
 @router.put("/{key}", response_model=SettingRead)

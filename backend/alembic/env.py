@@ -24,6 +24,11 @@ from app.models.stage3 import (  # noqa: F401  注册模型元数据
     Stakeholder,
     StakeholderCommunication,
 )
+from app.models.ai import (  # noqa: F401  注册模型元数据
+    AiActionProposal,
+    AiConversation,
+    AiMessage,
+)
 
 config = context.config
 

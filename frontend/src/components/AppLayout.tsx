@@ -9,6 +9,7 @@ import {
   FundProjectionScreenOutlined,
   LinkOutlined,
   ProjectOutlined,
+  RobotOutlined,
   SettingOutlined,
   TeamOutlined,
   WarningOutlined,
@@ -38,10 +39,15 @@ const PAGE_TITLES: Record<string, string> = {
 export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const selectedKey = location.pathname.startsWith('/projects') ? '/projects' : location.pathname
+const selectedKey = location.pathname.startsWith('/projects') ? '/projects' : location.pathname
 
   const title =
-    PAGE_TITLES[location.pathname] ?? (location.pathname.startsWith('/projects') ? '项目详情' : 'Project Toolkit')
+    PAGE_TITLES[location.pathname] ??
+    (location.pathname.startsWith('/projects')
+      ? '项目详情'
+      : location.pathname === '/ai'
+        ? 'AI 工作台'
+        : 'Project Toolkit')
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -69,10 +75,11 @@ export default function AppLayout() {
           mode="inline"
           selectedKeys={[selectedKey]}
           onClick={({ key }) => {
-            if (key === '/projects' || key === '/settings') navigate(key)
+            if (key === '/projects' || key === '/ai' || key === '/settings') navigate(key)
           }}
           items={[
             { key: '/projects', icon: <ProjectOutlined />, label: '项目列表' },
+            { key: '/ai', icon: <RobotOutlined />, label: 'AI 工作台' },
             { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
             { type: 'divider' },
             {

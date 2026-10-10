@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import AppLayout from './components/AppLayout'
+import AiPage from './pages/AiPage'
 import AuditPage from './pages/AuditPage'
 import BaselinesPage from './pages/BaselinesPage'
 import ChangesPage from './pages/ChangesPage'
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/projects/:id/changes" element={<ChangesPage />} />
           <Route path="/projects/:id/stakeholders" element={<StakeholdersPage />} />
           <Route path="/projects/:id/audit" element={<AuditPage />} />
+          <Route path="/ai" element={<AiPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/projects" replace />} />
         </Route>
