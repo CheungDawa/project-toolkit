@@ -66,4 +66,21 @@ D-01~D-05（建议默认值已备）、C-1~C-6 处理意见、A-1~A-6 假设（�
 
 ## 4. 阶段验收追加区（阶段 1 起填写）
 
+### 阶段 1 · 会话 1（T1-01 ~ T1-06）— 2026-10-10
+
+- **决策锁定**：D-01~D-05 按建议执行（09 文档决策记录）；M0 通过。
+- **环境实测**：WSL2 Ubuntu-26.04（用户 `cheungdawa`，主目录 `/home/cheungdawa`）；git 2.53.0；Docker 29.8.1 + Compose v5.5.1（无需 sudo）；daemon 已配国内镜像源（docker.1ms.run 等，2026-09-09 由用户配置）；Windows 侧无 git/docker（全部经 WSL 操作）。
+- **完成任务**：T1-01 仓库骨架（6 次分级提交，49 文件，工作区 `project-toolkit/`）；T1-02 Compose 编排（frontend/backend/db 三常驻 + 健康检查 + named volume + `./data` 挂载）；T1-03 后端骨架（配置/统一错误/日志/健康检查）；T1-04 SQLAlchemy+Alembic（projects 首版迁移 0001）；T1-05 项目 CRUD API；T1-06 pytest 套件。
+- **验证证据（均为实际运行输出）**：
+  - 空库首次启动自动迁移：日志 `Running upgrade -> 0001`；`alembic current` = `0001 (head)`（A1-4 / NFR-11）；
+  - compose 三服务启动、重启后 healthy（backend/db healthy，frontend 健康检查通过）；
+  - 冒烟脚本：health 200 ok/db ok；创建 201；重复编号 422 `code_exists` 字段级提示；列表 total=1（A1-5 可自动化部分）；
+  - nginx 反代链路：`http://localhost:8080/api/health` 返回 ok（代理验证）；
+  - 持久化：`compose down → up` 容器重建后 `PT-DEMO-001` 仍在（A1-3 / NFR-02）；
+  - pytest：**10 passed**（正常/重复编号/日期倒置/422 结构/搜索/筛选/分页/排序/404/归档/删除/编号不释放/幂等列表）。
+- **缺陷与修复**：conftest 用 psycopg 直连管理库时未剥离 SQLAlchemy 方言 `+psycopg` → psycopg3 报错 → 修复为仅连接串剥离（SQLAlchemy/Alembic 侧保留方言），提交 `831f981` 后全绿。教训：**psycopg3 连接串与 SQLAlchemy URL 的方言差异是 Python 后端常见坑，测试库管理代码应集中封装**（已写入第 2 节候选经验，待复现确认后晋升）。
+- **估算偏差**：T1-01~T1-06 计划 8.5-13.5h（07 文档合计），实际净开发约 4h + 环境排障约 1.5h（镜像源不稳定重试）；**偏差为负（更快）**，主要因骨架代码无历史债务。
+- **遗留待办（会话 2）**：T1-07~T1-12（前端 React+AntD、T1-11 备份脚本与 backup 服务、T1-12 阶段报告）；前端暂为占位页（NFR-03 合规）。
+- **风险更新**：R-05 镜像源不稳定风险实锤（本次两次 EOF）；应对：后台构建含重试（`until docker pull` ×5）。此风险由用户侧镜像源决定，建议用户后续更换更稳的镜像或启用代理。
+
 > 模板：阶段号 / 验收日期 / 通过项 / 缺陷与修复 / 返工原因 / 拆解改进 / 估算偏差记录。届时由 TeleAgent 在各阶段验收后追加，并据实更新第 2 节经验状态。

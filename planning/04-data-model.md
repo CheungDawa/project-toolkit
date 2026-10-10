@@ -65,6 +65,7 @@ erDiagram
 | work_calendar_id | uuid | FK 可空 | 项目级工作日历覆盖；NULL 时使用全局日历（全局定义与项目级例外日期存于 `app_settings`，见 3.20；TD-01） |
 | created_at / updated_at | timestamptz | NOT NULL | |
 | archived_at | timestamptz | 可空 | 归档（阶段1提示词·条5"归档"） |
+| deleted_at | timestamptz | 可空 | 软删除（删除确认后置位；编号不释放——会话 1 实现补充，对应 T1-05 DELETE 端点） |
 
 > 工作日历数据本身（周末定义、节假日、项目级例外日期）统一存 `app_settings.workcalendar.*`（3.20 节），`projects.work_calendar_id` 用于支持项目级独立日历的扩展位；第一版实现全局日历 + 项目级例外日期。
 
