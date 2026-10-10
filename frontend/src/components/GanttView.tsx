@@ -64,12 +64,6 @@ on_date_change: (task: { id: string | number }, start: Date, end: Date) => {
       on_click: (task: { id: string | number }) => {
         onTaskClick?.(String(task.id))
       },
-      on_progress_change: (task: { id: string }, progress: number) => {
-        onProgressChange?.(String(task.id), Math.round(progress))
-      },
-      on_click: (task: { id: string }) => {
-        onTaskClick?.(String(task.id))
-      },
       on_view_change: (mode: { name?: string } | string) => {
         const name = typeof mode === 'string' ? mode : mode?.name
         if (name === 'Day' || name === 'Week' || name === 'Month') {
