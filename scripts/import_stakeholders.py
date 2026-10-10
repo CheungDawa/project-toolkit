@@ -33,7 +33,7 @@ ATTR_ORDER = [("unknown", "不知晓"), ("resist", "抵制"), ("neutral", "中�
 
 
 def call(method: str, path: str, payload: dict | None = None):
-    data = json.dumps(payload, encoding="utf-8").encode() if payload is not None else None
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(
         BASE + path, data=data, method=method,
         headers={"Content-Type": "application/json"} if data else {},
