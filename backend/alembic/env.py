@@ -8,6 +8,13 @@ from app.core.config import get_settings
 from app.models.base import Base
 from app.models.project import Project  # noqa: F401  注册模型元数据
 from app.models.setting import Setting  # noqa: F401  注册模型元数据
+from app.models.task import (  # noqa: F401  注册模型元数据
+    BaselineTaskSnapshot,
+    Milestone,
+    ScheduleBaseline,
+    Task,
+    TaskDependency,
+)
 
 config = context.config
 

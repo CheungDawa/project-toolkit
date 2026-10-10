@@ -2,8 +2,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, projects
+from app.api import baselines, calendar, dependencies, health, milestones, projects
 from app.api.settings import router as settings_router
+from app.api.tasks import router as tasks_router
 from app.core.config import get_settings
 from app.core.errors import register_handlers
 from app.core.logging import setup_logging
@@ -28,6 +29,11 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(projects.router)
     app.include_router(settings_router)
+    app.include_router(tasks_router)
+    app.include_router(dependencies.router)
+    app.include_router(milestones.router)
+    app.include_router(baselines.router)
+    app.include_router(calendar.router)
     return app
 
 

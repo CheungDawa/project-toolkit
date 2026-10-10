@@ -59,9 +59,9 @@ from app.main import app  # noqa: E402
 
 @pytest.fixture()
 def db_session():
-    """每个用例前清空业务表，保证相互独立。"""
+    """每个用例前清空业务表（projects 级联清理 tasks/依赖/基线/里程碑），保证相互独立。"""
     with engine.connect() as conn:
-        conn.execute(text('TRUNCATE TABLE "projects"'))
+        conn.execute(text('TRUNCATE TABLE projects CASCADE'))
         conn.commit()
     session = SessionLocal()
     try:
