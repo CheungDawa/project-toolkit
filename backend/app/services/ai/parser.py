@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from app.core.errors import AppError
@@ -104,5 +104,5 @@ def build_context_digest(project_id: UUID, capability: str, keys: list[str]) -> 
         "project_id": str(project_id),
         "capability": capability,
         "fields": keys,
-        "at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }

@@ -194,7 +194,7 @@ def reject_proposal(proposal_id: UUID, db: Session = Depends(get_db)) -> AiActio
 
 # ---------- 能力调用 ----------
 
-@router.post("/projects/{project_id}/wbs-draft", response_model=AiProposalRead)
+@router.post("/projects/{project_id}/wbs-draft", status_code=201, response_model=AiProposalRead)
 def wbs_draft(project_id: UUID, description: str | None = None, db: Session = Depends(get_db)) -> AiActionProposal:
     _require_config(db)
     context_text, fields = ai_context.capability_context(db, project_id, "wbs")
