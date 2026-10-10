@@ -305,7 +305,7 @@ export default function StakeholdersPage() {
           <div style={{ fontWeight: 600 }}>{d.name}</div>
           {d.role ? <div style={{ fontSize: 10, color: '#8a9ba8' }}>{d.role}</div> : null}
         </div>
-      ), r.type === 'org' ? `${r.label}` : r.type === 'sub' ? `└ ${r.label}` : ''),
+      ), r.type === 'org' ? `${r.label}（${r.count} 人）` : r.type === 'sub' ? `└ ${r.label}（${r.count} 人）` : ''),
     },
     {
       title: '单位', key: 'org', width: 140,
