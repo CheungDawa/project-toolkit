@@ -71,7 +71,7 @@ export default function GanttPage() {
     }
   }
 
-  const handleTaskClick = (taskId: string) => {
+  const handleTaskClick = (_taskId: string) => {
     message.info('提示：拖动条身改日期，拖动进度条改进度，均自动保存')
   }
 

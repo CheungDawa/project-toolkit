@@ -46,7 +46,7 @@ export default function GanttView({
     const container = containerRef.current
     if (!container) return
 
-    const gantt = new Gantt(container, items, {
+    new Gantt(container, items, {
       language,
       readonly,
       readonly_dates: readonly,
