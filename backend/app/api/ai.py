@@ -17,10 +17,8 @@ from app.schemas.ai import (
     AiConversationRead,
     AiMessageRead,
     AiProposalRead,
-    AiProposalReject,
-    AiProposalAccept,
-    AiStatusRead,
     AiChatRequest,
+    AiProposalAccept,
 )
 from app.services.ai import context as ai_context
 from app.services.ai import parser as ai_parser
