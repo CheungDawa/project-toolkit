@@ -1,7 +1,6 @@
 import { MessageOutlined, PlusOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import {
   App,
-  Badge,
   Button,
   Card,
   DatePicker,
@@ -31,7 +30,6 @@ import {
   updateStakeholder,
 } from '../api/stage3'
 
-const PLAN_CODES: Record<string, string> = { A: '日报', B: '周报', E: '月度远程', F: '线下' }
 const ATT_KEYS = ['unknown', 'resist', 'neutral', 'support', 'lead'] as const
 const ATT_NAMES: Record<string, string> = { unknown: '不知晓', resist: '抵制', neutral: '中立', support: '支持', lead: '领导' }
 const PRIORITY_COLORS: Record<string, string> = { P0: '#c0392b', P1: '#e8a33d', P2: '#1e8449' }
