@@ -154,8 +154,6 @@ export default function StakeholdersPage() {
     return { p0, p1, p2, hiInfluence, total }
   }, [filtered])
 
-  const filtered = useMemo(() => {
-
   // ==================== 矩阵象限分配 ====================
   const quadMap = useMemo(() => {
     const result: Record<string, StakeholderItem[]> = { 'hi-hi': [], 'hi-lo': [], 'lo-hi': [], 'lo-lo': [] }
