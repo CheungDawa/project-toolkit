@@ -153,6 +153,8 @@ def delete_task(task_id: UUID, db: Session = Depends(get_db)) -> None:
     subtree = wbs_service.find_subtree_ids(db, task.project_id, task_id)
     for item in db.scalars(select(Task).where(Task.id.in_(subtree))).all():
         item.deleted_at = _utcnow()
+        # 释放 WBS 编码占位，避免与活跃任务重算冲突（唯一约束覆盖含已删行）
+        item.wbs_code = f"DEL-{item.id.hex[:12]}"
     db.commit()
     wbs_service.recompute_codes(db, task.project_id)
 
