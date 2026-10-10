@@ -1,4 +1,6 @@
 """任务 / 依赖 / 里程碑 / 基线 请求响应模型。"""
+from __future__ import annotations
+
 from datetime import date, datetime
 from typing import Any
 from uuid import UUID
