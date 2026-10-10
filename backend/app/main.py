@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, projects
+from app.api import health, projects, settings
 from app.core.config import get_settings
 from app.core.errors import register_handlers
 from app.core.logging import setup_logging
@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
     register_handlers(app)
     app.include_router(health.router)
     app.include_router(projects.router)
+    app.include_router(settings.router)
     return app
 
 
