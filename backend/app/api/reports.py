@@ -185,7 +185,7 @@ def export_stakeholder_report(project_id: UUID, db: Session = Depends(get_db)) -
         p.add_run(f"■ {org}（{total} 人）").bold = True
         for sub, people in sub_map.items():
             p2 = doc.add_paragraph()
-            p2.paragraph_format.left_indent = 0.4 * 914400  # 0.4 inch indent
+            p2.paragraph_format.left_indent = 365760  # 0.4 inch indent (int for python-docx)
             p2.add_run(f"├ {sub}（{len(people)} 人）").bold = True
             table = doc.add_table(rows=1, cols=7)
             table.style = "Light Grid Accent 1"
