@@ -13,13 +13,15 @@ export default function SettingsPage() {
     void (async () => {
       setLoading(true)
       try {
-        setSettings(await listSettings())
+        const all = await listSettings()
+        // AI 模块已移除：model.default 配置已无效，不再展示
+        setSettings(all.filter((s) => s.key !== 'model.default'))
       } catch (err) {
         message.error(err instanceof Error ? err.message : '加载设置失败')
       } finally {
         setLoading(false)
       }
-    })()
+    })
   }, [message])
 
   return (

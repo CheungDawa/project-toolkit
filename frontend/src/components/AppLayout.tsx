@@ -13,13 +13,12 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ProjectOutlined,
-  SettingOutlined,
   TableOutlined,
   TeamOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
 import { Breadcrumb, Button, Layout, Menu, Select, Tag, Typography } from 'antd'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { listProjects, type Project } from '../api/projects'
@@ -146,39 +145,39 @@ export default function AppLayout() {
     document.title = `${title} · Project Toolkit`
   }, [title])
 
-  const menuItems = [
+  // 导航结构（需求5）：全局功能 + 每个项目一个可展开子菜单（概览 + 13 个模块）
+  // 展开态受控：默认展开当前路由项目，用户可自行展开其他项目
+  const [openKeys, setOpenKeys] = useState<string[]>([])
+  useEffect(() => {
+    setOpenKeys(projectId ? [`proj:${projectId}`] : [])
+  }, [projectId])
+
+  const menuItems = useMemo(() => [
     { key: '/dashboard', icon: <DashboardOutlined />, label: '驾驶舱' },
     { key: '/projects', icon: <ProjectOutlined />, label: '项目列表' },
-    ...(projectId
-      ? [
-          { type: 'divider' as const },
-          { key: 'module:overview', icon: <ProjectOutlined />, label: '项目概览' },
-          {
-            key: 'project-modules',
-            label: '项目模块',
-            icon: <ApartmentOutlined />,
-            children: PROJECT_MODULES.map((m) => ({
-              key: `module:${m.key}`,
-              icon: m.icon,
-              label: m.label,
-            })),
-          },
-        ]
-      : []),
     { type: 'divider' as const },
-    { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
-  ]
+    ...projects.map((p) => ({
+      key: `proj:${p.id}`,
+      icon: <ProjectOutlined />,
+      label: p.name,
+      children: [
+        { key: `pmod:${p.id}:overview`, icon: <ProjectOutlined />, label: '项目概览' },
+        ...PROJECT_MODULES.map((m) => ({
+          key: `pmod:${p.id}:${m.key}`,
+          icon: m.icon,
+          label: m.label,
+        })),
+      ],
+    })),
+  ], [projects])
 
-  // 项目概览高亮：/projects/:id 无后缀时
-  const isProjectOverview = !!projectId && location.pathname === `/projects/${projectId}`
-
-  const selectedKeys = [
-    activeModuleKey ? `module:${activeModuleKey}` : null,
-    isProjectOverview ? 'module:overview' : null,
-    location.pathname === '/dashboard' || location.pathname === '/' ? '/dashboard' : null,
-    !projectId && location.pathname === '/projects' ? '/projects' : null,
-    location.pathname === '/settings' ? '/settings' : null,
-  ].filter(Boolean) as string[]
+  // 高亮：项目内 = 当前模块或概览；全局页 = 对应顶级项（系统设置入口已按用户要求移除）
+  const selectedKeys = projectId
+    ? [activeModuleKey ? `pmod:${projectId}:${activeModuleKey}` : `pmod:${projectId}:overview`]
+    : [
+        location.pathname === '/dashboard' || location.pathname === '/' ? '/dashboard' : null,
+        location.pathname === '/projects' ? '/projects' : null,
+      ].filter(Boolean) as string[]
 
   const switchProject = (newId: string) => {
     const suffix = projectId ? location.pathname.split(`/projects/${projectId}`)[1] ?? '' : ''
@@ -205,7 +204,7 @@ export default function AppLayout() {
         <div
           style={{
             height: 40,
-            margin: collapsed ? '10px 8px 4px' : '10px 12px 4px',
+            margin: collapsed ? '10px 6px 4px' : '10px 12px 4px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -226,58 +225,31 @@ export default function AppLayout() {
           <ApartmentOutlined />
           {!collapsed && <span>Project Toolkit</span>}
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0 8px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 4px 8px', minHeight: 0 }}>
           <Menu
             theme="dark"
             mode="inline"
             inlineCollapsed={collapsed}
             selectedKeys={selectedKeys}
-            defaultOpenKeys={projectId ? ['project-modules'] : []}
+            openKeys={collapsed ? undefined : openKeys}
+            onOpenChange={(keys) => setOpenKeys(keys as string[])}
             onClick={({ key }) => {
-              if (key === '/dashboard' || key === '/projects' || key === '/settings') {
+              if (key === '/dashboard' || key === '/projects') {
                 navigate(key)
-              } else if (key === 'module:overview' && projectId) {
-                navigate(`/projects/${projectId}`)
-              } else if (key.startsWith('module:') && projectId) {
-                const moduleKey = key.replace('module:', '')
-                const module = PROJECT_MODULES.find((m) => m.key === moduleKey)
-                if (module) navigate(`/projects/${projectId}/${module.path}`)
+              } else if (key.startsWith('pmod:')) {
+                const [, pid, moduleKey] = key.split(':')
+                if (moduleKey === 'overview') {
+                  navigate(`/projects/${pid}`)
+                } else {
+                  const module = PROJECT_MODULES.find((m) => m.key === moduleKey)
+                  if (module) navigate(`/projects/${pid}/${module.path}`)
+                }
               }
             }}
             items={menuItems}
             style={{ background: 'transparent', borderRight: 'none' }}
           />
         </div>
-        {/* 项目空间常驻当前项目标识（折叠时隐藏文字，避免被截断） */}
-        {!collapsed && currentProject && (
-          <div
-            style={{
-              flexShrink: 0,
-              margin: '0 10px 8px',
-              padding: '6px 10px',
-              borderRadius: 8,
-              background: 'rgba(79,70,229,.18)',
-              border: '1px solid rgba(122,113,245,.28)',
-              fontSize: 12,
-              color: '#c7c9f5',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              overflow: 'hidden',
-            }}
-            title={`${currentProject.code} ${currentProject.name}`}
-          >
-            <ProjectOutlined style={{ flexShrink: 0 }} />
-            <span
-              style={{
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                fontWeight: 600, color: '#e3e4fb',
-              }}
-            >
-              {currentProject.name}
-            </span>
-          </div>
-        )}
         {!collapsed && (
           <div style={{ flexShrink: 0, textAlign: 'center', padding: '8px 0 10px' }}>
             <Typography.Text style={{ fontSize: 12, color: 'rgba(255,255,255,.28)' }}>
@@ -355,6 +327,28 @@ export default function AppLayout() {
           <Outlet />
         </Content>
       </Layout>
+      <style>{`
+        /* 菜单选中/悬停块圆角：贴边内缩后圆角完整显示（折叠态修复） */
+        aside .ant-menu-dark .ant-menu-item,
+        aside .ant-menu-dark .ant-menu-submenu-title,
+        aside .ant-menu-dark .ant-menu-item-selected {
+          border-radius: 8px !important;
+        }
+        aside .ant-menu-inline-collapsed > .ant-menu-item,
+        aside .ant-menu-inline-collapsed > .ant-menu-submenu > .ant-menu-submenu-title {
+          border-radius: 8px !important;
+        }
+        /* 折叠态弹层内的子菜单同样圆角 */
+        .ant-menu-inline-collapsed-popup .ant-menu-item {
+          border-radius: 8px !important;
+        }
+        /* 项目行文字过长省略 */
+        aside .ant-menu-submenu-title-content {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+      `}</style>
     </Layout>
   )
 }

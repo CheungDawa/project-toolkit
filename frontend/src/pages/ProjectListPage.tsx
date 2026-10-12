@@ -178,60 +178,71 @@ export default function ProjectListPage() {
   return (
     <div>
       <Card title="项目列表">
-        <Space wrap style={{ marginBottom: 16 }}>
-          <Input.Search
-            placeholder="搜索编号 / 名称 / 客户"
-            allowClear
-            style={{ width: 280 }}
-            onSearch={(v) => {
-              setKeyword(v)
-              setPage(1)
-            }}
-          />
-          <Select
-            placeholder="按状态筛选"
-            allowClear
-            style={{ width: 140 }}
-            options={STATUS_OPTIONS.map((v) => ({ value: v, label: v }))}
-            onChange={(v) => {
-              setStatus(v)
-              setPage(1)
-            }}
-          />
-          <Select
-            value={archived}
-            style={{ width: 120 }}
-            options={[
-              { value: 'exclude', label: '隐藏归档' },
-              { value: 'only', label: '仅归档' },
-            ]}
-            onChange={(v) => {
-              setArchived(v)
-              setPage(1)
-            }}
-          />
-        </Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setModalOpen(true) }}>
-          新建项目
-        </Button>
+        {/* 工具栏：左侧筛选，右侧主操作，垂直对齐同一行 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <Space wrap>
+            <Input.Search
+              placeholder="搜索编号 / 名称 / 客户"
+              allowClear
+              style={{ width: 280 }}
+              onSearch={(v) => {
+                setKeyword(v)
+                setPage(1)
+              }}
+            />
+            <Select
+              placeholder="按状态筛选"
+              allowClear
+              style={{ width: 140 }}
+              options={STATUS_OPTIONS.map((v) => ({ value: v, label: v }))}
+              onChange={(v) => {
+                setStatus(v)
+                setPage(1)
+              }}
+            />
+            <Select
+              value={archived}
+              style={{ width: 120 }}
+              options={[
+                { value: 'exclude', label: '隐藏归档' },
+                { value: 'only', label: '仅归档' },
+              ]}
+              onChange={(v) => {
+                setArchived(v)
+                setPage(1)
+              }}
+            />
+          </Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setModalOpen(true) }}>
+            新建项目
+          </Button>
+        </div>
+        <Table<Project>
+          rowKey="id"
+          columns={columns}
+          dataSource={items}
+          loading={loading}
+          pagination={{
+            current: page,
+            pageSize: PAGE_SIZE,
+            total,
+            showSizeChanger: false,
+            showTotal: (t) => `共 ${t} 个项目`,
+          }}
+          onChange={handleTableChange}
+          locale={{ emptyText: <Typography.Text type="secondary">暂无项目，点击「新建项目」创建</Typography.Text> }}
+          scroll={{ x: 1100 }}
+        />
       </Card>
-
-      <Table<Project>
-        rowKey="id"
-        columns={columns}
-        dataSource={items}
-        loading={loading}
-        pagination={{
-          current: page,
-          pageSize: PAGE_SIZE,
-          total,
-          showSizeChanger: false,
-          showTotal: (t) => `共 ${t} 个项目`,
-        }}
-        onChange={handleTableChange}
-        locale={{ emptyText: <Typography.Text type="secondary">暂无项目，点击「新建项目」创建</Typography.Text> }}
-        scroll={{ x: 1100 }}
-      />
 
       <ProjectFormModal
         open={modalOpen}

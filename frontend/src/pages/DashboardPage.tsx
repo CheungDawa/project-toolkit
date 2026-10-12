@@ -62,13 +62,13 @@ interface OverviewData {
   alert_summary: { danger: number; warning: number }
 }
 
-/** 卡片配色：正常=靛蓝系；警示=红/橙，带描边强调 */
-const CARD_THEME: Record<string, { grad: string; warn: boolean }> = {
-  projects: { grad: 'linear-gradient(135deg,#4f46e5,#7c6ff5)', warn: false },
-  tasks: { grad: 'linear-gradient(135deg,#0284c7,#38bdf8)', warn: false },
-  risks: { grad: 'linear-gradient(135deg,#dc2626,#f05252)', warn: true },
-  issues: { grad: 'linear-gradient(135deg,#d97706,#f59e0b)', warn: true },
-  done: { grad: 'linear-gradient(135deg,#059669,#10b981)', warn: false },
+/** 卡片配色（浅色企业风）：图标块彩色渐变，卡片白底；警示=红/橙描边 */
+const CARD_THEME: Record<string, { grad: string; warn: boolean; iconTint: string }> = {
+  projects: { grad: 'linear-gradient(135deg,#4f46e5,#7c6ff5)', warn: false, iconTint: '#4f46e5' },
+  tasks: { grad: 'linear-gradient(135deg,#0284c7,#38bdf8)', warn: false, iconTint: '#0284c7' },
+  risks: { grad: 'linear-gradient(135deg,#dc2626,#f05252)', warn: true, iconTint: '#dc2626' },
+  issues: { grad: 'linear-gradient(135deg,#d97706,#f59e0b)', warn: true, iconTint: '#d97706' },
+  done: { grad: 'linear-gradient(135deg,#059669,#10b981)', warn: false, iconTint: '#059669' },
 }
 
 /** 预警类型 → 标签 + 跳转路径（点击直达对应模块处理） */
@@ -124,50 +124,49 @@ export default function DashboardPage() {
         onClick={config.onClick}
         style={{
           position: 'relative',
-          background: 'linear-gradient(160deg,#1e2338 0%,#14172a 100%)',
+          background: '#fff',
           borderRadius: 14,
-          padding: '18px 18px 14px',
-          color: '#fff',
+          padding: '16px 18px 14px',
           cursor: config.onClick ? 'pointer' : 'default',
           overflow: 'hidden',
-          border: isWarn ? '1px solid rgba(240,82,82,.55)' : '1px solid rgba(255,255,255,.06)',
+          border: isWarn ? '1px solid rgba(240,82,82,.45)' : '1px solid #eceef4',
           boxShadow: isWarn
-            ? '0 6px 20px rgba(220,38,38,.25)'
-            : '0 6px 16px rgba(17,20,40,.14)',
+            ? '0 6px 18px rgba(220,38,38,.12)'
+            : '0 1px 4px rgba(17,20,40,.05)',
           transition: 'transform .18s ease, box-shadow .18s ease',
         }}
         className="pt-dashboard-card"
       >
         {/* 顶部大号装饰图标（低透明度背景层） */}
-        <div style={{ position: 'absolute', right: -6, top: -10, fontSize: 84, opacity: 0.08 }}>
+        <div style={{ position: 'absolute', right: -6, top: -10, fontSize: 84, opacity: 0.05, color: theme.iconTint }}>
           {config.icon}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, position: 'relative' }}>
           <span
             style={{
               width: 30, height: 30, borderRadius: 9, display: 'inline-flex',
               alignItems: 'center', justifyContent: 'center', fontSize: 15,
-              background: theme.grad,
+              background: theme.grad, color: '#fff',
             }}
           >
             {config.icon}
           </span>
-          <span style={{ fontSize: 13, color: 'rgba(255,255,255,.68)' }}>{config.label}</span>
+          <span style={{ fontSize: 12.5, color: '#8a919e' }}>{config.label}</span>
           {isWarn ? (
             <span
               style={{
                 marginLeft: 'auto', fontSize: 10, padding: '1px 7px', borderRadius: 8,
-                background: 'rgba(240,82,82,.22)', color: '#ff8484', fontWeight: 600,
+                background: '#fef2f2', color: '#b91c1c', fontWeight: 600,
               }}
             >
               需关注
             </span>
           ) : null}
         </div>
-        <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.05, letterSpacing: -0.5, position: 'relative' }}>
+        <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.05, letterSpacing: -0.5, position: 'relative', color: '#171b2e' }}>
           {config.value}
         </div>
-        <div style={{ marginTop: 8, fontSize: 12, position: 'relative' }}>{config.foot}</div>
+        <div style={{ marginTop: 8, fontSize: 12, position: 'relative', color: '#5b6575' }}>{config.foot}</div>
       </div>
     )
   }
@@ -292,14 +291,14 @@ export default function DashboardPage() {
 
   return (
     <div>
-      {/* ===================== 统计卡区（暗色系仪表卡） ===================== */}
+      {/* ===================== 统计卡区（浅色企业风） ===================== */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 12, marginBottom: 14 }}>
         {statCard({
           key: 'projects',
           icon: <ProjectOutlined />,
           label: '项目总数',
           value: data?.totals.projects ?? '—',
-          foot: <span style={{ color: 'rgba(255,255,255,.5)' }}>点击进入项目列表 →</span>,
+          foot: <span style={{ color: '#8a919e' }}>点击进入项目列表 →</span>,
           onClick: () => navigate('/projects'),
         })}
         {statCard({
@@ -308,8 +307,8 @@ export default function DashboardPage() {
           label: '任务总数',
           value: data?.totals.tasks ?? '—',
           foot: (
-            <span style={{ color: 'rgba(255,255,255,.78)' }}>
-              <b style={{ color: '#34d399', fontSize: 13 }}>{data?.totals.tasks_done ?? 0}</b> 已完成 · <b style={{ color: '#60a5fa', fontSize: 13 }}>{data?.totals.tasks_doing ?? 0}</b> 进行中
+            <span>
+              <b style={{ color: '#059669', fontSize: 13 }}>{data?.totals.tasks_done ?? 0}</b> 已完成 · <b style={{ color: '#0284c7', fontSize: 13 }}>{data?.totals.tasks_doing ?? 0}</b> 进行中
             </span>
           ),
         })}
@@ -319,9 +318,9 @@ export default function DashboardPage() {
           label: '开放风险',
           value: data ? data.totals.risks_open : '—',
           foot: data && data.totals.high_risks > 0 ? (
-            <span style={{ color: '#ff8484', fontWeight: 600 }}>⚠ 高风险 {data.totals.high_risks} 项，需重点管控</span>
+            <span style={{ color: '#b91c1c', fontWeight: 600 }}>⚠ 高风险 {data.totals.high_risks} 项，需重点管控</span>
           ) : (
-            <span style={{ color: 'rgba(255,255,255,.5)' }}>暂无高风险</span>
+            <span style={{ color: '#8a919e' }}>暂无高风险</span>
           ),
         })}
         {statCard({
@@ -330,20 +329,19 @@ export default function DashboardPage() {
           label: '未关闭问题',
           value: data ? data.totals.issues_open : '—',
           foot: data && data.totals.issues_open > 0 ? (
-            <span style={{ color: '#fbbf24', fontWeight: 600 }}>有待处理事项</span>
+            <span style={{ color: '#b45309', fontWeight: 600 }}>有待处理事项</span>
           ) : (
-            <span style={{ color: 'rgba(255,255,255,.5)' }}>全部闭环</span>
+            <span style={{ color: '#8a919e' }}>全部闭环</span>
           ),
         })}
         {/* 完成率环形卡 */}
         <div
           style={{
-            background: 'linear-gradient(160deg,#1e2338 0%,#14172a 100%)',
+            background: '#fff',
             borderRadius: 14,
-            padding: '18px',
-            color: '#fff',
-            border: '1px solid rgba(255,255,255,.06)',
-            boxShadow: '0 6px 16px rgba(17,20,40,.14)',
+            padding: '16px 18px 14px',
+            border: '1px solid #eceef4',
+            boxShadow: '0 1px 4px rgba(17,20,40,.05)',
             display: 'flex',
             alignItems: 'center',
             gap: 16,
@@ -355,27 +353,27 @@ export default function DashboardPage() {
             percent={doneColor.percent}
             size={86}
             strokeColor={doneColor.color}
-            trailColor="rgba(255,255,255,.09)"
+            trailColor="#eef0f5"
             format={() => (
-              <span style={{ color: '#fff', fontSize: 18, fontWeight: 800 }}>{doneColor.percent}%</span>
+              <span style={{ color: '#171b2e', fontSize: 18, fontWeight: 800 }}>{doneColor.percent}%</span>
             )}
           />
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <span
                 style={{
                   width: 30, height: 30, borderRadius: 9, display: 'inline-flex',
                   alignItems: 'center', justifyContent: 'center', fontSize: 15,
-                  background: 'linear-gradient(135deg,#059669,#10b981)',
+                  background: 'linear-gradient(135deg,#059669,#10b981)', color: '#fff',
                 }}
               >
                 <CheckCircleOutlined />
               </span>
-              <span style={{ fontSize: 13, color: 'rgba(255,255,255,.68)' }}>任务完成率</span>
+              <span style={{ fontSize: 12.5, color: '#8a919e' }}>任务完成率</span>
             </div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.78)' }}>
-              <b style={{ color: '#34d399', fontSize: 15 }}>{data?.totals.tasks_done ?? 0}</b>
-              <span style={{ color: 'rgba(255,255,255,.45)' }}> / {data?.totals.tasks ?? 0} 项任务已完成</span>
+            <div style={{ fontSize: 12, color: '#5b6575' }}>
+              <b style={{ color: '#059669', fontSize: 15 }}>{data?.totals.tasks_done ?? 0}</b>
+              <span style={{ color: '#8a919e' }}> / {data?.totals.tasks ?? 0} 项任务已完成</span>
             </div>
           </div>
         </div>
@@ -593,8 +591,8 @@ export default function DashboardPage() {
 
       <style>{`
         .pt-dashboard-card { transition: transform .18s ease, box-shadow .18s ease; }
-        .pt-dashboard-card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(17,20,40,.22); }
-        .pt-dashboard-card .ant-progress-circle-trail { stroke: rgba(255,255,255,.09); }
+        .pt-dashboard-card:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(17,20,40,.10); border-color: #d9d6ff; }
+        .pt-dashboard-card .ant-progress-circle-trail { stroke: #eef0f5; }
         /* 表格密度与表头 */
         .ant-table-thead > tr > th { background: #f7f8fc !important; font-size: 12px; color: #5b6575 !important; padding: 9px 12px !important; }
         .ant-table-tbody > tr > td { padding: 10px 12px !important; }
