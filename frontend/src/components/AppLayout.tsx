@@ -225,7 +225,7 @@ export default function AppLayout() {
           <ApartmentOutlined />
           {!collapsed && <span>Project Toolkit</span>}
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '4px' : '4px 4px 8px', minHeight: 0 }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '2px 0 8px' : '4px 4px 8px', minHeight: 0 }}>
           <Menu
             theme="dark"
             mode="inline"
@@ -334,15 +334,16 @@ export default function AppLayout() {
         aside .ant-menu-dark .ant-menu-item-selected {
           border-radius: 8px !important;
         }
-        /* 折叠态：antd 固定 64px 宽会溢出容器，缩窄到容器内并保持图标居中 */
+        /* 折叠态：antd 固定 64px 宽，item 内缩 4px 保证圆角完整、图标居中 */
         aside .ant-menu-inline-collapsed {
-          width: 100% !important;
-          min-width: 0 !important;
+          width: 64px !important;
+          min-width: 64px !important;
         }
         aside .ant-menu-inline-collapsed > .ant-menu-item,
         aside .ant-menu-inline-collapsed > .ant-menu-submenu > .ant-menu-submenu-title {
           border-radius: 8px !important;
-          width: calc(100% - 8px) !important;
+          width: 56px !important;
+          min-width: 56px !important;
           margin-inline: 4px !important;
         }
         /* 折叠态弹层内的子菜单同样圆角 */
