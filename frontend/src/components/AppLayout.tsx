@@ -77,16 +77,26 @@ export default function AppLayout() {
   }, [collapsed])
 
   // 项目清单：Header 项目切换器数据源（进入项目空间后可见当前项目，可直换）
+  // 分页拉全量（后端 size 上限 100），循环至取完，上限 10 页防御异常
   const [projects, setProjects] = useState<Project[]>([])
   useEffect(() => {
     let cancelled = false
-    listProjects({ size: 200 })
-      .then((page) => {
-        if (!cancelled) setProjects(page.items)
-      })
-      .catch(() => {
+    void (async () => {
+      try {
+        const all: Project[] = []
+        let page = 1
+        for (let i = 0; i < 10; i++) {
+          const resp = await listProjects({ size: 100, page })
+          if (cancelled) return
+          all.push(...resp.items)
+          if (resp.items.length === 0 || all.length >= resp.total) break
+          page += 1
+        }
+        if (!cancelled) setProjects(all)
+      } catch {
         // 拉取失败时选择器显示占位，不影响导航
-      })
+      }
+    })()
     return () => {
       cancelled = true
     }
