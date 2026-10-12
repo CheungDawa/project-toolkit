@@ -6,8 +6,9 @@ import {
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
-import { App, Card, Progress, Table, Tag, Typography } from 'antd'
+import { App, Card, Progress, Table, Tag } from 'antd'
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
@@ -62,9 +63,9 @@ export default function DashboardPage() {
   const bigCard = (
     label: string,
     value: number | string,
-    sub?: string,
-    icon: React.ReactNode,
+    icon: ReactNode,
     color: string,
+    sub?: string,
   ) => (
     <Card loading={loading} style={{ borderRadius: 12 }} styles={{ body: { padding: '18px 20px' } }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -95,16 +96,12 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <Typography.Title level={5} style={{ marginBottom: 14 }}>
-        🚀 驾驶舱 · 全局总览
-      </Typography.Title>
-
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12, marginBottom: 16 }}>
-        {bigCard('项目总数', data?.totals.projects ?? '-', '进行中/已启动', <ProjectOutlined />, 'linear-gradient(135deg,#4f46e5,#6d67f5)')}
-        {bigCard('任务总数', data?.totals.tasks ?? '-', `已完成 ${data?.totals.tasks_done ?? 0} · 进行中 ${data?.totals.tasks_doing ?? 0}`, <ThunderboltOutlined />, 'linear-gradient(135deg,#0ea5e9,#38bdf8)')}
-        {bigCard('开放风险', data?.totals.risks_open ?? '-', `高风险 ${data?.totals.high_risks ?? 0} 项`, <WarningOutlined />, 'linear-gradient(135deg,#ef4444,#f87171)')}
-        {bigCard('未关闭问题', data?.totals.issues_open ?? '-', '待处理', <BugOutlined />, 'linear-gradient(135deg,#d97706,#f59e0b)')}
-        {bigCard('完成率', data && data.totals.tasks > 0 ? `${Math.round((data.totals.tasks_done / data.totals.tasks) * 100)}%` : '-', '全部项目任务', <CheckCircleOutlined />, 'linear-gradient(135deg,#10b981,#34d399)')}
+        {bigCard('项目总数', data?.totals.projects ?? '-', <ProjectOutlined />, 'linear-gradient(135deg,#4f46e5,#6d67f5)', '全部项目')}
+        {bigCard('任务总数', data?.totals.tasks ?? '-', <ThunderboltOutlined />, 'linear-gradient(135deg,#0ea5e9,#38bdf8)', `已完成 ${data?.totals.tasks_done ?? 0} · 进行中 ${data?.totals.tasks_doing ?? 0}`)}
+        {bigCard('开放风险', data?.totals.risks_open ?? '-', <WarningOutlined />, 'linear-gradient(135deg,#ef4444,#f87171)', `高风险 ${data?.totals.high_risks ?? 0} 项`)}
+        {bigCard('未关闭问题', data?.totals.issues_open ?? '-', <BugOutlined />, 'linear-gradient(135deg,#d97706,#f59e0b)', '待处理')}
+        {bigCard('完成率', data && data.totals.tasks > 0 ? `${Math.round((data.totals.tasks_done / data.totals.tasks) * 100)}%` : '-', <CheckCircleOutlined />, 'linear-gradient(135deg,#10b981,#34d399)', '全部项目任务')}
       </div>
 
       <Card title="项目进度排行" style={{ borderRadius: 12 }}>
