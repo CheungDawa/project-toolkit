@@ -105,7 +105,7 @@ export default function AppLayout() {
   ].filter(Boolean) as string[]
 
   return (
-    <Layout style={{ minHeight: '100vh', background: '#f4f5fa' }}>
+    <Layout hasSider style={{ minHeight: '100vh', background: '#f4f5fa' }}>
       {/* 固定宽度侧边栏：sticky 常驻不随页面滚动消失；菜单区超高时内部滚动 */}
       <aside
         style={{
