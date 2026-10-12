@@ -111,6 +111,10 @@ export default function AppLayout() {
     return null
   })()
 
+  // 项目上下文：唯一事实来源（URL 项目 ID → 项目档案），Header 面包屑/侧边栏标识共用
+  const projectContext = useProjectContext(projectId ?? undefined)
+  const currentProject = projectContext.project
+
   const activeModule = projectId
     ? PROJECT_MODULES.find((m) => m.path === activeModuleKey) ?? null
     : null
@@ -180,10 +184,6 @@ export default function AppLayout() {
     const suffix = projectId ? location.pathname.split(`/projects/${projectId}`)[1] ?? '' : ''
     navigate(`/projects/${newId}${suffix}`)
   }
-
-  // 项目上下文：唯一事实来源（URL 项目 ID → 项目档案），Header 标签/面包屑共用
-  const projectContext = useProjectContext(projectId ?? undefined)
-  const currentProject = projectContext.project
 
   return (
     <Layout hasSider style={{ minHeight: '100vh', background: '#f4f5fa' }}>
