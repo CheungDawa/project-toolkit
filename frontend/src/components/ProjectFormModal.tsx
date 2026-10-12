@@ -1,5 +1,6 @@
 import { DatePicker, Form, Input, Modal, Select } from 'antd'
 import dayjs, { Dayjs } from 'dayjs'
+import { useEffect } from 'react'
 
 import type { Project, ProjectPayload } from '../api/projects'
 
@@ -28,8 +29,12 @@ interface FormValues {
 export default function ProjectFormModal({ open, project, onCancel, onSubmit }: ProjectFormModalProps) {
   const [form] = Form.useForm<FormValues>()
 
-  const initialValues: FormValues | undefined = project
-    ? {
+  // 回填修复：antd initialValues 仅在 Form store 首次创建时生效一次，
+  // form 实例随组件持久存在，必须用 setFieldsValue 在每次打开时回填/重置
+  useEffect(() => {
+    if (!open) return
+    if (project) {
+      form.setFieldsValue({
         code: project.code,
         name: project.name,
         customer: project.customer ?? undefined,
@@ -45,8 +50,11 @@ export default function ProjectFormModal({ open, project, onCancel, onSubmit }: 
             ? [dayjs(project.actual_start), dayjs(project.actual_end)]
             : null,
         description: project.description ?? undefined,
-      }
-    : undefined
+      })
+    } else {
+      form.resetFields()
+    }
+  }, [open, project, form])
 
   const handleOk = async () => {
     const values = await form.validateFields()
@@ -76,7 +84,7 @@ export default function ProjectFormModal({ open, project, onCancel, onSubmit }: 
       width={640}
       forceRender
     >
-      <Form form={form} layout="vertical" initialValues={initialValues} style={{ marginTop: 12 }}>
+      <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12 }}>
           <Form.Item
             name="code"
