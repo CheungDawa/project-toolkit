@@ -18,11 +18,12 @@ import {
   TeamOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
-import { Button, Layout, Menu, Select, Tag, Typography } from 'antd'
+import { Breadcrumb, Button, Layout, Menu, Select, Tag, Typography } from 'antd'
 import { useEffect, useState } from 'react'
-import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { listProjects, type Project } from '../api/projects'
+import { useProjectContext } from '../hooks/useProjectContext'
 
 const { Header, Content } = Layout
 
@@ -56,7 +57,8 @@ function pageTitle(pathname: string, projectId: string | null): { title: string;
   if (pathname === '/settings') return { title: '系统设置' }
   if (projectId) {
     const suffix = pathname.split(`/projects/${projectId}`)[1]?.replace(/^\//, '')
-    if (!suffix) return { title: '项目详情' }
+    if (!suffix) return { title: '项目概览' }
+    if (suffix === 'detail') return { title: '项目档案' }
     const module = PROJECT_MODULES.find((m) => m.path === suffix)
     return { title: module?.label ?? '项目', subtitle: '项目空间' }
   }
@@ -109,6 +111,31 @@ export default function AppLayout() {
     return null
   })()
 
+  const activeModule = projectId
+    ? PROJECT_MODULES.find((m) => m.path === activeModuleKey) ?? null
+    : null
+
+  // 面包屑：项目列表 / 项目名 / 模块名（逐级可点，面包屑本身即项目归属提示）
+  const breadcrumbItems = (() => {
+    if (!projectId) return []
+    const items = [
+      { title: <Link to="/projects">项目列表</Link> },
+      {
+        title: (
+          <Link to={`/projects/${projectId}`}>
+            {currentProject ? `${currentProject.code} ${currentProject.name}` : '项目空间'}
+          </Link>
+        ),
+      },
+    ]
+    if (activeModule) {
+      items.push({ title: <span style={{ color: '#4f46e5', fontWeight: 600 }}>{activeModule.label}</span> })
+    } else {
+      items.push({ title: <span style={{ color: '#4f46e5', fontWeight: 600 }}>项目概览</span> })
+    }
+    return items
+  })()
+
   const { title, subtitle } = pageTitle(location.pathname, projectId)
 
   useEffect(() => {
@@ -121,6 +148,7 @@ export default function AppLayout() {
     ...(projectId
       ? [
           { type: 'divider' as const },
+          { key: 'module:overview', icon: <ProjectOutlined />, label: '项目概览' },
           {
             key: 'project-modules',
             label: '项目模块',
@@ -137,9 +165,13 @@ export default function AppLayout() {
     { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
   ]
 
+  // 项目概览高亮：/projects/:id 无后缀时
+  const isProjectOverview = !!projectId && location.pathname === `/projects/${projectId}`
+
   const selectedKeys = [
     activeModuleKey ? `module:${activeModuleKey}` : null,
-    location.pathname === '/dashboard' ? '/dashboard' : null,
+    isProjectOverview ? 'module:overview' : null,
+    location.pathname === '/dashboard' || location.pathname === '/' ? '/dashboard' : null,
     !projectId && location.pathname === '/projects' ? '/projects' : null,
     location.pathname === '/settings' ? '/settings' : null,
   ].filter(Boolean) as string[]
@@ -149,7 +181,9 @@ export default function AppLayout() {
     navigate(`/projects/${newId}${suffix}`)
   }
 
-  const currentProject = projects.find((p) => p.id === projectId) ?? null
+  // 项目上下文：唯一事实来源（URL 项目 ID → 项目档案），Header 标签/面包屑共用
+  const projectContext = useProjectContext(projectId ?? undefined)
+  const currentProject = projectContext.project
 
   return (
     <Layout hasSider style={{ minHeight: '100vh', background: '#f4f5fa' }}>
@@ -202,6 +236,8 @@ export default function AppLayout() {
             onClick={({ key }) => {
               if (key === '/dashboard' || key === '/projects' || key === '/settings') {
                 navigate(key)
+              } else if (key === 'module:overview' && projectId) {
+                navigate(`/projects/${projectId}`)
               } else if (key.startsWith('module:') && projectId) {
                 const moduleKey = key.replace('module:', '')
                 const module = PROJECT_MODULES.find((m) => m.key === moduleKey)
@@ -212,6 +248,36 @@ export default function AppLayout() {
             style={{ background: 'transparent', borderRight: 'none' }}
           />
         </div>
+        {/* 项目空间常驻当前项目标识（折叠时隐藏文字，避免被截断） */}
+        {!collapsed && currentProject && (
+          <div
+            style={{
+              flexShrink: 0,
+              margin: '0 10px 8px',
+              padding: '6px 10px',
+              borderRadius: 8,
+              background: 'rgba(79,70,229,.18)',
+              border: '1px solid rgba(122,113,245,.28)',
+              fontSize: 12,
+              color: '#c7c9f5',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              overflow: 'hidden',
+            }}
+            title={`${currentProject.code} ${currentProject.name}`}
+          >
+            <ProjectOutlined style={{ flexShrink: 0 }} />
+            <span
+              style={{
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                fontWeight: 600, color: '#e3e4fb',
+              }}
+            >
+              {currentProject.name}
+            </span>
+          </div>
+        )}
         {!collapsed && (
           <div style={{ flexShrink: 0, textAlign: 'center', padding: '8px 0 10px' }}>
             <Typography.Text style={{ fontSize: 12, color: 'rgba(255,255,255,.28)' }}>
@@ -238,7 +304,7 @@ export default function AppLayout() {
             gap: 12,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
             <Button
               type="text"
               aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
@@ -246,24 +312,26 @@ export default function AppLayout() {
               onClick={() => setCollapsed((c) => !c)}
               style={{ flexShrink: 0 }}
             />
-            <span
-              style={{
-                width: 6, height: 22, borderRadius: 3,
-                background: 'linear-gradient(180deg, #4f46e5, #6d67f5)',
-                display: 'inline-block',
-                flexShrink: 0,
-              }}
-            />
-            <Typography.Title level={5} style={{ margin: 0, whiteSpace: 'nowrap' }}>
-              {title}
-            </Typography.Title>
             {projectId ? (
-              <Tag color="geekblue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
-                {currentProject ? `${currentProject.code} ${currentProject.name}` : '项目空间'}
-              </Tag>
-            ) : subtitle ? (
-              <Tag color="geekblue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>{subtitle}</Tag>
-            ) : null}
+              <Breadcrumb items={breadcrumbItems} style={{ whiteSpace: 'nowrap' }} />
+            ) : (
+              <>
+                <span
+                  style={{
+                    width: 6, height: 22, borderRadius: 3,
+                    background: 'linear-gradient(180deg, #4f46e5, #6d67f5)',
+                    display: 'inline-block',
+                    flexShrink: 0,
+                  }}
+                />
+                <Typography.Title level={5} style={{ margin: 0, whiteSpace: 'nowrap' }}>
+                  {title}
+                </Typography.Title>
+                {subtitle ? (
+                  <Tag color="geekblue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>{subtitle}</Tag>
+                ) : null}
+              </>
+            )}
           </div>
           {projectId ? (
             <Select
