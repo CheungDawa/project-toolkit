@@ -2,7 +2,9 @@ import {
   ArrowRightOutlined,
   BugOutlined,
   CheckCircleOutlined,
+  ClockCircleOutlined,
   ProjectOutlined,
+  RightOutlined,
   RiseOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
@@ -25,6 +27,24 @@ interface OverviewProject {
   risk_open: number
   issue_open: number
   high_risk: number
+  overdue_tasks: number
+  overdue_milestones: number
+}
+
+export interface OverviewAlert {
+  kind: 'project' | 'milestone' | 'risk' | 'deliverable' | 'coordination'
+  severity: 'danger' | 'warning'
+  days: number
+  project_id: string
+  project_label: string
+  title: string
+  detail: string
+  overdue_count?: number
+  risk_id?: string
+  milestone_id?: string
+  deliverable_id?: string
+  issue_id?: string
+  score?: number
 }
 
 interface OverviewData {
@@ -38,6 +58,8 @@ interface OverviewData {
     issues_open: number
   }
   projects: OverviewProject[]
+  alerts: OverviewAlert[]
+  alert_summary: { danger: number; warning: number }
 }
 
 /** 卡片配色：正常=靛蓝系；警示=红/橙，带描边强调 */
@@ -47,6 +69,20 @@ const CARD_THEME: Record<string, { grad: string; warn: boolean }> = {
   risks: { grad: 'linear-gradient(135deg,#dc2626,#f05252)', warn: true },
   issues: { grad: 'linear-gradient(135deg,#d97706,#f59e0b)', warn: true },
   done: { grad: 'linear-gradient(135deg,#059669,#10b981)', warn: false },
+}
+
+/** 预警类型 → 标签 + 跳转路径（点击直达对应模块处理） */
+const ALERT_META: Record<OverviewAlert['kind'], { label: string; icon: React.ReactNode; route: string }> = {
+  project: { label: '异常项目', icon: <ProjectOutlined />, route: '' },
+  milestone: { label: '逾期里程碑', icon: <ClockCircleOutlined />, route: '/milestones' },
+  risk: { label: '高优风险', icon: <WarningOutlined />, route: '/risks' },
+  deliverable: { label: '待验收交付物', icon: <CheckCircleOutlined />, route: '/deliverables' },
+  coordination: { label: '需协调事项', icon: <BugOutlined />, route: '/issues' },
+}
+
+const SEV_STYLE: Record<OverviewAlert['severity'], { bar: string; bg: string; tag: string }> = {
+  danger: { bar: '#dc2626', bg: '#fef2f2', tag: '#b91c1c' },
+  warning: { bar: '#d97706', bg: '#fffbeb', tag: '#b45309' },
 }
 
 export default function DashboardPage() {
@@ -132,6 +168,124 @@ export default function DashboardPage() {
           {config.value}
         </div>
         <div style={{ marginTop: 8, fontSize: 12, position: 'relative' }}>{config.foot}</div>
+      </div>
+    )
+  }
+
+  const goAlert = (alert: OverviewAlert) => {
+    const meta = ALERT_META[alert.kind]
+    navigate(`/projects/${alert.project_id}${meta.route}`)
+  }
+
+  const alertPanel = () => {
+    const alerts = data?.alerts ?? []
+    const danger = data?.alert_summary.danger ?? 0
+    const warning = data?.alert_summary.warning ?? 0
+    return (
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 14,
+          border: '1px solid #eceef4',
+          boxShadow: '0 1px 4px rgba(17,20,40,.05)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            padding: '14px 18px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid #f0f2f7',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 4, height: 16, borderRadius: 2, background: danger > 0 ? '#dc2626' : warning > 0 ? '#d97706' : '#059669' }} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#171b2e' }}>需要关注</span>
+            <span style={{ fontSize: 12, color: '#8a919e' }}>按紧急度排序（红=异常 · 黄=预警）</span>
+          </div>
+          {(danger > 0 || warning > 0) && (
+            <span style={{ display: 'inline-flex', gap: 6 }}>
+              {danger > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 8, background: '#fef2f2', color: '#b91c1c' }}>
+                  异常 {danger}
+                </span>
+              )}
+              {warning > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 8px', borderRadius: 8, background: '#fffbeb', color: '#b45309' }}>
+                  预警 {warning}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '32px 0', textAlign: 'center', color: '#8a919e', fontSize: 13 }}>加载中…</div>
+        ) : alerts.length === 0 ? (
+          <div style={{ padding: '36px 0', textAlign: 'center', color: '#8a919e', fontSize: 13 }}>
+            <CheckCircleOutlined style={{ color: '#059669', marginRight: 6 }} />
+            暂无需要关注的事项（无逾期里程碑、高风险、待验收交付物与需协调问题）
+          </div>
+        ) : (
+          <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+            {alerts.map((a, idx) => {
+              const meta = ALERT_META[a.kind]
+              const sev = SEV_STYLE[a.severity]
+              return (
+                <div
+                  key={idx}
+                  onClick={() => goAlert(a)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '10px 18px 10px 14px',
+                    borderBottom: idx === alerts.length - 1 ? 'none' : '1px solid #f5f6fa',
+                    cursor: 'pointer',
+                    borderLeft: `3px solid ${sev.bar}`,
+                    background: a.severity === 'danger' ? 'rgba(254,242,242,.4)' : 'rgba(255,251,235,.35)',
+                    transition: 'background .15s ease',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f3f5fb')}
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = a.severity === 'danger' ? 'rgba(254,242,242,.4)' : 'rgba(255,251,235,.35)')
+                  }
+                >
+                  <span style={{ flexShrink: 0 }}>
+                    <Tag style={{ marginInlineEnd: 0, fontSize: 11 }} color={a.severity === 'danger' ? 'red' : 'orange'}>
+                      {meta.label}
+                    </Tag>
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#2c3242', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {a.title}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: '#8a919e', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {a.detail}
+                    </div>
+                  </div>
+                  <span style={{ flexShrink: 0, fontSize: 11.5, color: '#5b6575' }}>{a.project_label}</span>
+                  {a.days > 0 && (
+                    <span
+                      style={{
+                        flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 8,
+                        background: sev.bg, color: sev.tag, minWidth: 52, textAlign: 'center',
+                      }}
+                    >
+                      逾期{a.days}天
+                    </span>
+                  )}
+                  <RightOutlined style={{ flexShrink: 0, fontSize: 11, color: '#c3c9d4' }} />
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <div style={{ padding: '8px 18px', fontSize: 11, color: '#b3bac5', borderTop: '1px solid #f5f6fa' }}>
+          口径：逾期任务/里程碑按计划日期与今天比对；高风险=评分矩阵等级「高」；待验收=已提交待审核或逾期未提交；需协调=高严重度/逾期/无责任人的开放问题
+        </div>
       </div>
     )
   }
@@ -227,6 +381,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* ===================== 需要关注（管理预警，按紧急度排序） ===================== */}
+      <div style={{ marginBottom: 14 }}>{alertPanel()}</div>
+
       {/* ===================== 项目排行表 ===================== */}
       <div
         style={{
@@ -249,7 +406,7 @@ export default function DashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 4, height: 16, borderRadius: 2, background: '#4f46e5' }} />
             <span style={{ fontSize: 15, fontWeight: 700, color: '#171b2e' }}>项目进度一览</span>
-            <span style={{ fontSize: 12, color: '#8a919e' }}>按完成率排序</span>
+            <span style={{ fontSize: 12, color: '#8a919e' }}>支持按异常 / 进度排序</span>
           </div>
           <span style={{ fontSize: 12, color: '#8a919e' }}>{data?.totals.projects ?? 0} 个项目</span>
         </div>
@@ -266,16 +423,9 @@ export default function DashboardPage() {
               key: 'rank',
               width: 44,
               align: 'center',
-              render: (_, _r, index) => {
-                const medal = index === 0 ? '#f59e0b' : index === 1 ? '#94a3b8' : index === 2 ? '#d97706' : null
-                return medal ? (
-                  <span style={{ display: 'inline-flex', width: 22, height: 22, borderRadius: '50%', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', background: medal }}>
-                    {index + 1}
-                  </span>
-                ) : (
-                  <span style={{ color: '#b3bac5', fontSize: 12 }}>{index + 1}</span>
-                )
-              },
+              render: (_, _r, index) => (
+                <span style={{ color: '#b3bac5', fontSize: 12 }}>{index + 1}</span>
+              ),
             },
             {
               title: '项目',
@@ -300,9 +450,46 @@ export default function DashboardPage() {
                 ),
             },
             {
+              title: '异常',
+              key: 'flags',
+              width: 150,
+              sorter: (a, b) =>
+                b.overdue_tasks + b.overdue_milestones + (b.high_risk > 0 ? 1 : 0) -
+                (a.overdue_tasks + a.overdue_milestones + (a.high_risk > 0 ? 1 : 0)),
+              sortDirections: ['descend', 'ascend'],
+              render: (_, r) => {
+                const items: React.ReactNode[] = []
+                if (r.overdue_tasks > 0) {
+                  items.push(
+                    <span key="ot" style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 8, background: '#fef2f2', color: '#dc2626' }}>
+                      任务逾期{r.overdue_tasks}
+                    </span>,
+                  )
+                }
+                if (r.overdue_milestones > 0) {
+                  items.push(
+                    <span key="om" style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 8, background: '#fef2f2', color: '#b91c1c' }}>
+                      里程碑逾期{r.overdue_milestones}
+                    </span>,
+                  )
+                }
+                if (r.high_risk > 0) {
+                  items.push(
+                    <span key="hr" style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 8, background: '#fff1f2', color: '#dc2626' }}>
+                      高风险{r.high_risk}
+                    </span>,
+                  )
+                }
+                if (items.length === 0) {
+                  return <span style={{ color: '#059669', fontSize: 11.5 }}>✓ 正常</span>
+                }
+                return <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>{items}</span>
+              },
+            },
+            {
               title: '计划周期',
               key: 'plan',
-              width: 190,
+              width: 170,
               render: (_, r) => {
                 if (!r.plan_start || !r.plan_end) return <span style={{ color: '#c3c9d4' }}>—</span>
                 return (
@@ -315,7 +502,7 @@ export default function DashboardPage() {
             {
               title: '任务',
               key: 'tasks',
-              width: 118,
+              width: 100,
               align: 'center',
               render: (_, r) => (
                 <span style={{ fontSize: 12.5 }}>
@@ -329,6 +516,8 @@ export default function DashboardPage() {
               title: '进度',
               key: 'progress',
               width: 150,
+              sorter: (a, b) => a.progress - b.progress,
+              defaultSortOrder: 'descend',
               render: (_, r) => {
                 const color = r.progress >= 80 ? '#059669' : r.progress >= 40 ? '#d97706' : '#94a3b8'
                 return (
@@ -339,7 +528,7 @@ export default function DashboardPage() {
                           width: `${r.progress}%`,
                           height: '100%',
                           borderRadius: 4,
-                          background: `linear-gradient(90deg,${color}bb,${color})`,
+                          background: color,
                           transition: 'width .4s ease',
                         }}
                       />
