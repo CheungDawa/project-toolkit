@@ -172,20 +172,23 @@ export default function AppLayout() {
         key: 'projects-root',
         icon: <ProjectOutlined />,
         label: '项目列表',
-        children: [
-          { key: '/projects', icon: <ProjectOutlined />, label: '全部项目' },
-          ...projectNodes,
-        ],
+        children: projectNodes,
+        // 点击标题：收起态→展开项目树并进入列表页；展开态→仅收起（防误触导航）
+        onTitleClick: () => {
+          if (!openKeys.includes('projects-root')) {
+            navigate('/projects')
+          }
+        },
       },
     ]
-  }, [projects])
+  }, [projects, openKeys, navigate])
 
-  // 高亮：项目内 = 当前模块或概览；列表页 = 全部项目；驾驶舱 = 对应顶级项
+  // 高亮：项目内 = 当前模块或概览；列表页 = 项目列表标题；驾驶舱 = 对应顶级项
   const selectedKeys = projectId
     ? [activeModuleKey ? `pmod:${projectId}:${activeModuleKey}` : `pmod:${projectId}:overview`]
     : location.pathname === '/dashboard' || location.pathname === '/'
       ? ['/dashboard']
-      : ['/projects']
+      : ['projects-root']
 
   const switchProject = (newId: string) => {
     const suffix = projectId ? location.pathname.split(`/projects/${projectId}`)[1] ?? '' : ''
