@@ -145,18 +145,15 @@ export default function AppLayout() {
     document.title = `${title} · Project Toolkit`
   }, [title])
 
-  // 导航结构（需求5）：全局功能 + 每个项目一个可展开子菜单（概览 + 13 个模块）
-  // 展开态受控：默认展开当前路由项目，用户可自行展开其他项目
+  // 导航结构：全局功能 + 「项目列表」分组，其下每个项目一个可展开子菜单（概览 + 模块）
+  // 展开态受控：进入项目时自动展开「项目列表」+ 该项目
   const [openKeys, setOpenKeys] = useState<string[]>([])
   useEffect(() => {
-    setOpenKeys(projectId ? [`proj:${projectId}`] : [])
+    setOpenKeys(projectId ? ['projects-root', `proj:${projectId}`] : ['projects-root'])
   }, [projectId])
 
-  const menuItems = useMemo(() => [
-    { key: '/dashboard', icon: <DashboardOutlined />, label: '驾驶舱' },
-    { key: '/projects', icon: <ProjectOutlined />, label: '项目列表' },
-    { type: 'divider' as const },
-    ...projects.map((p) => ({
+  const menuItems = useMemo(() => {
+    const projectNodes = projects.map((p) => ({
       key: `proj:${p.id}`,
       icon: <ProjectOutlined />,
       label: p.name,
@@ -168,16 +165,24 @@ export default function AppLayout() {
           label: m.label,
         })),
       ],
-    })),
-  ], [projects])
+    }))
+    return [
+      { key: '/dashboard', icon: <DashboardOutlined />, label: '驾驶舱' },
+      {
+        key: 'projects-root',
+        icon: <ProjectOutlined />,
+        label: '项目列表',
+        children: projectNodes,
+      },
+    ]
+  }, [projects])
 
-  // 高亮：项目内 = 当前模块或概览；全局页 = 对应顶级项（系统设置入口已按用户要求移除）
+  // 高亮：项目内 = 当前模块或概览；列表页 = 项目根；驾驶舱 = 对应顶级项
   const selectedKeys = projectId
     ? [activeModuleKey ? `pmod:${projectId}:${activeModuleKey}` : `pmod:${projectId}:overview`]
-    : [
-        location.pathname === '/dashboard' || location.pathname === '/' ? '/dashboard' : null,
-        location.pathname === '/projects' ? '/projects' : null,
-      ].filter(Boolean) as string[]
+    : location.pathname === '/dashboard' || location.pathname === '/'
+      ? ['/dashboard']
+      : ['projects-root']
 
   const switchProject = (newId: string) => {
     const suffix = projectId ? location.pathname.split(`/projects/${projectId}`)[1] ?? '' : ''
@@ -233,10 +238,17 @@ export default function AppLayout() {
             selectedKeys={selectedKeys}
             openKeys={collapsed ? undefined : openKeys}
             onOpenChange={(keys) => setOpenKeys(keys as string[])}
+            onTitleClick={({ key }) => {
+              if (key === 'projects-root') {
+                navigate('/projects')
+              } else if (typeof key === 'string' && key.startsWith('proj:') && key !== 'projects-root') {
+                navigate(`/projects/${key.split(':')[1]}`)
+              }
+            }}
             onClick={({ key }) => {
-              if (key === '/dashboard' || key === '/projects') {
+              if (key === '/dashboard') {
                 navigate(key)
-              } else if (key.startsWith('pmod:')) {
+              } else if (typeof key === 'string' && key.startsWith('pmod:')) {
                 const [, pid, moduleKey] = key.split(':')
                 if (moduleKey === 'overview') {
                   navigate(`/projects/${pid}`)
