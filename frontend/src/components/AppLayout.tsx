@@ -10,17 +10,23 @@ import {
   FlagOutlined,
   FundProjectionScreenOutlined,
   LinkOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   ProjectOutlined,
   SettingOutlined,
   TableOutlined,
   TeamOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
-import { Layout, Menu, Tag, Typography } from 'antd'
-import { useEffect } from 'react'
+import { Button, Layout, Menu, Select, Tag, Typography } from 'antd'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 
+import { listProjects, type Project } from '../api/projects'
+
 const { Header, Content } = Layout
+
+const SIDEBAR_COLLAPSED_KEY = 'pt.sidebar-collapsed'
 
 /** 项目模块清单：进入任意项目后侧边栏一键直达 */
 export const PROJECT_MODULES = [
@@ -61,6 +67,30 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const projectId = useProjectIdFromPath()
+
+  // 侧边栏折叠（localStorage 记忆）
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
+  )
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0')
+  }, [collapsed])
+
+  // 项目清单：Header 项目切换器数据源（进入项目空间后可见当前项目，可直换）
+  const [projects, setProjects] = useState<Project[]>([])
+  useEffect(() => {
+    let cancelled = false
+    listProjects({ size: 200 })
+      .then((page) => {
+        if (!cancelled) setProjects(page.items)
+      })
+      .catch(() => {
+        // 拉取失败时选择器显示占位，不影响导航
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [location.pathname])
 
   const activeModuleKey = (() => {
     if (projectId && location.pathname.startsWith(`/projects/${projectId}/`)) {
@@ -104,16 +134,24 @@ export default function AppLayout() {
     location.pathname === '/settings' ? '/settings' : null,
   ].filter(Boolean) as string[]
 
+  const switchProject = (newId: string) => {
+    const suffix = projectId ? location.pathname.split(`/projects/${projectId}`)[1] ?? '' : ''
+    navigate(`/projects/${newId}${suffix}`)
+  }
+
+  const currentProject = projects.find((p) => p.id === projectId) ?? null
+
   return (
     <Layout hasSider style={{ minHeight: '100vh', background: '#f4f5fa' }}>
-      {/* 固定宽度侧边栏：sticky 常驻不随页面滚动消失；菜单区超高时内部滚动 */}
+      {/* 固定宽度侧边栏：sticky 常驻不随页面滚动消失；菜单区超高时内部滚动；可折叠（图标态） */}
       <aside
         style={{
           position: 'sticky',
           top: 0,
           height: '100vh',
-          width: 224,
-          flex: '0 0 224px',
+          width: collapsed ? 64 : 224,
+          flex: `0 0 ${collapsed ? 64 : 224}px`,
+          transition: 'width .2s ease, flex-basis .2s ease',
           display: 'flex',
           flexDirection: 'column',
           background: 'linear-gradient(180deg, #1b2035 0%, #12151f 100%)',
@@ -123,7 +161,7 @@ export default function AppLayout() {
         <div
           style={{
             height: 40,
-            margin: '10px 12px 4px',
+            margin: collapsed ? '10px 8px 4px' : '10px 12px 4px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -136,15 +174,19 @@ export default function AppLayout() {
             borderRadius: 10,
             boxShadow: '0 4px 12px rgba(79,70,229,.35)',
             flexShrink: 0,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            transition: 'margin .2s ease',
           }}
         >
           <ApartmentOutlined />
-          <span>Project Toolkit</span>
+          {!collapsed && <span>Project Toolkit</span>}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 0 8px' }}>
           <Menu
             theme="dark"
             mode="inline"
+            inlineCollapsed={collapsed}
             selectedKeys={selectedKeys}
             defaultOpenKeys={projectId ? ['project-modules'] : []}
             onClick={({ key }) => {
@@ -160,11 +202,13 @@ export default function AppLayout() {
             style={{ background: 'transparent', borderRight: 'none' }}
           />
         </div>
-        <div style={{ flexShrink: 0, textAlign: 'center', padding: '8px 0 10px' }}>
-          <Typography.Text style={{ fontSize: 12, color: 'rgba(255,255,255,.28)' }}>
-            v1.0 · 自托管
-          </Typography.Text>
-        </div>
+        {!collapsed && (
+          <div style={{ flexShrink: 0, textAlign: 'center', padding: '8px 0 10px' }}>
+            <Typography.Text style={{ fontSize: 12, color: 'rgba(255,255,255,.28)' }}>
+              v1.0 · 自托管
+            </Typography.Text>
+          </div>
+        )}
       </aside>
       <Layout>
         <Header
@@ -181,22 +225,53 @@ export default function AppLayout() {
             zIndex: 10,
             height: 56,
             lineHeight: '56px',
+            gap: 12,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <Button
+              type="text"
+              aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed((c) => !c)}
+              style={{ flexShrink: 0 }}
+            />
             <span
               style={{
                 width: 6, height: 22, borderRadius: 3,
                 background: 'linear-gradient(180deg, #4f46e5, #6d67f5)',
                 display: 'inline-block',
+                flexShrink: 0,
               }}
             />
-            <Typography.Title level={5} style={{ margin: 0 }}>
+            <Typography.Title level={5} style={{ margin: 0, whiteSpace: 'nowrap' }}>
               {title}
             </Typography.Title>
-            {subtitle ? <Tag color="geekblue" style={{ marginInlineEnd: 0 }}>{subtitle}</Tag> : null}
+            {projectId ? (
+              <Tag color="geekblue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                {currentProject ? `${currentProject.code} ${currentProject.name}` : '项目空间'}
+              </Tag>
+            ) : subtitle ? (
+              <Tag color="geekblue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>{subtitle}</Tag>
+            ) : null}
           </div>
-          {projectId ? <Tag color="purple">项目空间</Tag> : null}
+          {projectId ? (
+            <Select
+              showSearch
+              size="middle"
+              value={projectId}
+              onChange={switchProject}
+              placeholder="切换项目"
+              optionFilterProp="label"
+              style={{ width: 280, flexShrink: 0, textAlign: 'left' }}
+              popupMatchSelectWidth={false}
+              notFoundContent={<span style={{ fontSize: 12, color: '#8a919e' }}>暂无项目</span>}
+              options={projects.map((p) => ({
+                value: p.id,
+                label: `${p.code} · ${p.name}`,
+              }))}
+            />
+          ) : null}
         </Header>
         <Content style={{ margin: 16 }}>
           <Outlet />
