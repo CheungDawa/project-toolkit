@@ -225,7 +225,7 @@ export default function AppLayout() {
           <ApartmentOutlined />
           {!collapsed && <span>Project Toolkit</span>}
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '4px 4px 8px', minHeight: 0 }}>
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '4px' : '4px 4px 8px', minHeight: 0 }}>
           <Menu
             theme="dark"
             mode="inline"
@@ -328,15 +328,23 @@ export default function AppLayout() {
         </Content>
       </Layout>
       <style>{`
-        /* 菜单选中/悬停块圆角：贴边内缩后圆角完整显示（折叠态修复） */
+        /* 菜单选中/悬停块圆角：内缩后圆角完整显示（折叠态修复） */
         aside .ant-menu-dark .ant-menu-item,
         aside .ant-menu-dark .ant-menu-submenu-title,
         aside .ant-menu-dark .ant-menu-item-selected {
           border-radius: 8px !important;
         }
+        /* 折叠态：antd 固定 64px 宽会溢出容器，缩窄到容器内并保持图标居中 */
+        aside .ant-menu-inline-collapsed {
+          width: 100% !important;
+          min-width: 0 !important;
+        }
         aside .ant-menu-inline-collapsed > .ant-menu-item,
         aside .ant-menu-inline-collapsed > .ant-menu-submenu > .ant-menu-submenu-title {
           border-radius: 8px !important;
+          padding-inline: calc((100% - 16px) / 2) !important;
+          padding-left: calc((100% - 16px) / 2) !important;
+          padding-right: calc((100% - 16px) / 2) !important;
         }
         /* 折叠态弹层内的子菜单同样圆角 */
         .ant-menu-inline-collapsed-popup .ant-menu-item {
