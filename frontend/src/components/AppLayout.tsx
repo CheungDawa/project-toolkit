@@ -172,17 +172,20 @@ export default function AppLayout() {
         key: 'projects-root',
         icon: <ProjectOutlined />,
         label: '项目列表',
-        children: projectNodes,
+        children: [
+          { key: '/projects', icon: <ProjectOutlined />, label: '全部项目' },
+          ...projectNodes,
+        ],
       },
     ]
   }, [projects])
 
-  // 高亮：项目内 = 当前模块或概览；列表页 = 项目根；驾驶舱 = 对应顶级项
+  // 高亮：项目内 = 当前模块或概览；列表页 = 全部项目；驾驶舱 = 对应顶级项
   const selectedKeys = projectId
     ? [activeModuleKey ? `pmod:${projectId}:${activeModuleKey}` : `pmod:${projectId}:overview`]
     : location.pathname === '/dashboard' || location.pathname === '/'
       ? ['/dashboard']
-      : ['projects-root']
+      : ['/projects']
 
   const switchProject = (newId: string) => {
     const suffix = projectId ? location.pathname.split(`/projects/${projectId}`)[1] ?? '' : ''
@@ -238,15 +241,8 @@ export default function AppLayout() {
             selectedKeys={selectedKeys}
             openKeys={collapsed ? undefined : openKeys}
             onOpenChange={(keys) => setOpenKeys(keys as string[])}
-            onTitleClick={({ key }) => {
-              if (key === 'projects-root') {
-                navigate('/projects')
-              } else if (typeof key === 'string' && key.startsWith('proj:') && key !== 'projects-root') {
-                navigate(`/projects/${key.split(':')[1]}`)
-              }
-            }}
             onClick={({ key }) => {
-              if (key === '/dashboard') {
+              if (key === '/dashboard' || key === '/projects') {
                 navigate(key)
               } else if (typeof key === 'string' && key.startsWith('pmod:')) {
                 const [, pid, moduleKey] = key.split(':')
