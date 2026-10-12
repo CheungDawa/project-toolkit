@@ -342,9 +342,8 @@ export default function AppLayout() {
         aside .ant-menu-inline-collapsed > .ant-menu-item,
         aside .ant-menu-inline-collapsed > .ant-menu-submenu > .ant-menu-submenu-title {
           border-radius: 8px !important;
-          padding-inline: calc((100% - 16px) / 2) !important;
-          padding-left: calc((100% - 16px) / 2) !important;
-          padding-right: calc((100% - 16px) / 2) !important;
+          width: calc(100% - 8px) !important;
+          margin-inline: 4px !important;
         }
         /* 折叠态弹层内的子菜单同样圆角 */
         .ant-menu-inline-collapsed-popup .ant-menu-item {
