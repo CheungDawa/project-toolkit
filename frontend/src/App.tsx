@@ -4,9 +4,11 @@ import AppLayout from './components/AppLayout'
 import AuditPage from './pages/AuditPage'
 import BaselinesPage from './pages/BaselinesPage'
 import ChangesPage from './pages/ChangesPage'
+import DashboardPage from './pages/DashboardPage'
 import DeliverablesPage from './pages/DeliverablesPage'
 import GanttPage from './pages/GanttPage'
 import IssuesPage from './pages/IssuesPage'
+import KanbanPage from './pages/KanbanPage'
 import MilestonesPage from './pages/MilestonesPage'
 import ProgressPage from './pages/ProgressPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
@@ -22,9 +24,11 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/projects" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/projects" element={<ProjectListPage />} />
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
+          <Route path="/projects/:id/kanban" element={<KanbanPage />} />
           <Route path="/projects/:id/wbs" element={<WbsPage />} />
           <Route path="/projects/:id/gantt" element={<GanttPage />} />
           <Route path="/projects/:id/milestones" element={<MilestonesPage />} />

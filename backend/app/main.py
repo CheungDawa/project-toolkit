@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import baselines, calendar, dependencies, deliverables, health, issues, milestones, progress, projects, reports, risks
+from app.api import baselines, calendar, dependencies, deliverables, health, issues, milestones, overview, progress, projects, reports, risks
 from app.api.settings import router as settings_router
 from app.api.stage3 import router as stage3_router
 from app.api.tasks import router as tasks_router
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(progress.router)
     app.include_router(deliverables.router)
     app.include_router(reports.router)
+    app.include_router(overview.router)
     return app
 
 
