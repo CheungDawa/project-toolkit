@@ -43,12 +43,12 @@ export default function ProjectFormModal({ open, project, onCancel, onSubmit }: 
         status: project.status ?? undefined,
         plan:
           project.plan_start && project.plan_end
-            ? [dayjs(project.plan_start), dayjs(project.plan_end)]
-            : null,
+            ? ([dayjs(project.plan_start), dayjs(project.plan_end)] as [Dayjs, Dayjs])
+            : undefined,
         actual:
           project.actual_start && project.actual_end
-            ? [dayjs(project.actual_start), dayjs(project.actual_end)]
-            : null,
+            ? ([dayjs(project.actual_start), dayjs(project.actual_end)] as [Dayjs, Dayjs])
+            : undefined,
         description: project.description ?? undefined,
       })
     } else {
