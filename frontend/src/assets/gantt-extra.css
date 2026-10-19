@@ -1,0 +1,103 @@
+/* ============================================================================
+ * Project Toolkit —— frappe-gantt 增强样式
+ * 说明：本文件只通过「类名」增强 frappe-gantt 渲染出的元素，不修改库的 DOM 结构。
+ *       custom_class 会被 frappe-gantt 加在 bar 的分组元素上（源码依据：
+ *       node_modules/frappe-gantt/src/bar.js:15-18 与 36-37，
+ *       形如 <g class="bar-wrapper pt-done">），因此这里用
+ *       `.gantt .bar-wrapper.<类名> .bar / .bar-progress / .bar-label` 选择器着色。
+ * ==========================================================================*/
+
+/* ---------- 1. 今日线：库默认只有 1px 并且颜色接近网格线，这里加粗为红色 ---------- */
+.gantt-container .current-highlight {
+  width: 2px !important;
+  background: #ff4d4f !important;
+  opacity: 0.85;
+}
+
+.gantt-container .current-ball-highlight {
+  background: #ff4d4f !important;
+}
+
+.gantt-container .current-date-highlight {
+  background: #ff4d4f !important;
+}
+
+/* ---------- 2. 按任务状态着色（custom_class） ---------- */
+/* 未开始 */
+.gantt .bar-wrapper.pt-todo .bar {
+  fill: #fafafa;
+}
+.gantt .bar-wrapper.pt-todo .bar-progress {
+  fill: #bfbfbf;
+}
+
+/* 进行中 */
+.gantt .bar-wrapper.pt-doing .bar {
+  fill: #e6f4ff;
+}
+.gantt .bar-wrapper.pt-doing .bar-progress {
+  fill: #1677ff;
+}
+
+/* 已完成 */
+.gantt .bar-wrapper.pt-done .bar {
+  fill: #f6ffed;
+}
+.gantt .bar-wrapper.pt-done .bar-progress {
+  fill: #52c41a;
+}
+
+/* 逾期：计划结束已过且未完成 */
+.gantt .bar-wrapper.pt-overdue .bar {
+  fill: #fff1f0;
+}
+.gantt .bar-wrapper.pt-overdue .bar-progress {
+  fill: #ff4d4f;
+}
+
+/* ---------- 3. 汇总条（父任务）：深色实心，与叶子任务明显区分 ---------- */
+.gantt .bar-wrapper.pt-summary .bar {
+  fill: #595959;
+  stroke: #262626;
+  stroke-width: 1;
+}
+.gantt .bar-wrapper.pt-summary .bar-progress {
+  fill: #bfbfbf;
+}
+.gantt .bar-wrapper.pt-summary .bar-label {
+  fill: #ffffff;
+  font-weight: 600;
+}
+
+/* ---------- 4. 里程碑：紫色实心 + 虚线描边 ---------- */
+/* 说明：frappe-gantt 没有里程碑图形，这里用「零长度任务 + 专属配色」表达，
+ *       名称前缀 ◆ 在 GanttPage 里拼接；不做 rotate 变形（无法在浏览器验证，
+ *       SVG 元素 transform-origin 在不同浏览器下基准不同，风险过高）。 */
+.gantt .bar-wrapper.pt-milestone .bar {
+  fill: #722ed1;
+  stroke: #391085;
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+.gantt .bar-wrapper.pt-milestone .bar-progress {
+  fill: #9254de;
+}
+.gantt .bar-wrapper.pt-milestone .bar-label {
+  fill: #ffffff;
+  font-weight: 600;
+}
+
+/* ---------- 5. 导出用容器：保证截图时不被外层滚动容器裁切 ---------- */
+.pt-gantt-export {
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.pt-gantt-view {
+  overflow-x: auto;
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}

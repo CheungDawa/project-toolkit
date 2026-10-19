@@ -107,7 +107,19 @@ export const reorderTask = (projectId: string, body: { task_id: string; new_pare
 
 export const exportTasksUrl = (projectId: string) => `/api/projects/${projectId}/tasks/export`
 
-export const importTasks = async (projectId: string, file: File) => {
+export interface ImportIssue {
+  row: number
+  message: string
+}
+
+export interface TaskImportResult {
+  created: number
+  errors: ImportIssue[]
+  /** 老版本后端不返回该字段，调用方必须做 ?? [] 兜底 */
+  warnings?: ImportIssue[]
+}
+
+export const importTasks = async (projectId: string, file: File): Promise<TaskImportResult> => {
   const form = new FormData()
   form.append('file', file)
   const resp = await fetch(`/api/projects/${projectId}/tasks/import`, { method: 'POST', body: form })
@@ -116,8 +128,14 @@ export const importTasks = async (projectId: string, file: File) => {
     const message = body?.error?.message ?? `导入失败（${resp.status}）`
     throw new Error(message)
   }
-  return body as { created: number; errors: { row: number; message: string }[] }
+  return body as TaskImportResult
 }
+
+/** 从其他项目整棵复制 WBS 树（作为顶级任务追加；with_dates=true 时连计划日期一起复制） */
+export const cloneTasksFromProject = (projectId: string, sourceProjectId: string, withDates = false) =>
+  api.post<{ created: number; with_dates: boolean }>(
+    `/projects/${projectId}/tasks/clone-from/${sourceProjectId}?with_dates=${withDates ? 'true' : 'false'}`,
+  )
 
 export const listDependencies = (projectId: string) =>
   api.get<DependencyItem[]>(`/projects/${projectId}/dependencies`)
