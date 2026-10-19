@@ -103,11 +103,11 @@ def compare_baseline(
 
     snapshots = list(
         db.scalars(
-            select(BaselineTaskSnapshot)
-            .where(BaselineTaskSnapshot.baseline_id == baseline_id)
-            .order_by(BaselineTaskSnapshot.wbs_code)
+            select(BaselineTaskSnapshot).where(BaselineTaskSnapshot.baseline_id == baseline_id)
         ).all()
     )
+    # 数值化排序（'1.10' 排在 '1.2' 之后；DEL- 之类前缀用大数兜底）
+    snapshots.sort(key=lambda snap: wbs_service.wbs_sort_key(snap.wbs_code))
     tasks_by_id = {
         task.id: task for task in wbs_service.list_tasks_ordered(db, project_id)
     }

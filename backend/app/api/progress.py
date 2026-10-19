@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.time import today_local
 from app.models.project import Project
 from app.models.stage5 import ProgressSnapshot
 from app.services import snapshot as snapshot_service
@@ -36,7 +37,7 @@ class CaptureRequest(BaseModel):
 @router.post("/projects/{project_id}/snapshots", status_code=201)
 def capture_snapshot(project_id: UUID, payload: CaptureRequest | None = None, db: Session = Depends(get_db)) -> dict:
     target = payload.snapshot_date if payload else None
-    if target and target > date.today():
+    if target and target > today_local():
         from app.core.errors import AppError
         raise AppError(422, "future_date", "不能补录未来日期")
     snap = snapshot_service.capture_snapshot(db, project_id, target)
@@ -54,7 +55,7 @@ def list_snapshots(project_id: UUID, db: Session = Depends(get_db)) -> list[dict
 def burndown(project_id: UUID, days: int = Query(default=90, ge=1, le=365), db: Session = Depends(get_db)) -> dict:
     """燃尽数据：仅真实快照；理想线从首个快照到计划结束日（无计划日期则到最近快照日）。"""
     snaps = snapshot_service.list_snapshots(db, project_id)
-    recent = [s for s in snaps if s.snapshot_date >= (date.today() - timedelta(days=days))]
+    recent = [s for s in snaps if s.snapshot_date >= (today_local() - timedelta(days=days))]
     if not recent:
         return {"snapshots": [], "ideal": []}
 
@@ -78,7 +79,7 @@ def burndown(project_id: UUID, days: int = Query(default=90, ge=1, le=365), db: 
     if target_days := max((target_date - first.snapshot_date).days, 1):
         for offset in range(0, target_days + 1):
             day = first.snapshot_date + timedelta(days=offset)
-            if day > date.today():
+            if day > today_local():
                 break
             ratio = offset / target_days
             ideal.append({

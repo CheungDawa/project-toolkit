@@ -17,6 +17,7 @@ from app.models.stage3 import Issue, Risk, Stakeholder
 from app.models.stage5 import Deliverable
 from app.models.task import Milestone, Task
 from app.schemas.stage5 import DeliverableRead
+from app.services import progress as progress_service
 from app.services import wbs as wbs_service
 
 router = APIRouter(prefix="/api", tags=["reports"])
@@ -26,21 +27,30 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _metrics_of(db: Session, project_id: UUID) -> dict:
+    """项目级进度/工时统一口径（与 WBS 页根任务有效进度一致）。"""
+    return progress_service.project_metrics(wbs_service.list_tasks_ordered(db, project_id))
+
+
+def _progress_text(task: Task, effective: dict) -> str:
+    """任务行进度文本：父任务取子树汇总后的有效进度，统一 1 位小数。"""
+    value = effective.get(task.id, float(task.progress or 0))
+    return f"{round(float(value), 1)}%"
+
+
 @router.get("/projects/{project_id}/reports/weekly-text")
 def weekly_text(project_id: UUID, db: Session = Depends(get_db)) -> dict:
     """周报文本（真实数据聚合，带三要素）。"""
     now = _utcnow().astimezone()
-    tasks = wbs_service.list_tasks_ordered(db, project_id)
-    completed = sum(1 for t in tasks if t.status == "已完成")
-    hours_total = sum(float(t.work_hours or 0) for t in tasks)
+    metrics = _metrics_of(db, project_id)
     lines = [
         f"统计截止日期：{now.date().isoformat()}",
         f"数据来源：Project Toolkit（任务/风险/问题/交付清单聚合）",
         f"生成时间：{now.strftime('%Y-%m-%d %H:%M')}",
         "",
         "一、本周进展",
-        f"- 任务完成：{completed}/{len(tasks)}，总工时 {hours_total:.1f}h，完成进度 "
-        f"{round(completed / len(tasks) * 100) if tasks else 0}%",
+        f"- 任务完成：{metrics['completed_tasks']}/{metrics['total_tasks']}，总工时 {metrics['total_hours']:.1f}h，完成进度 "
+        f"{metrics['progress']}%",
         "二、下周计划",
         "- （信息不足：请按实际情况填写）",
         "三、风险与问题",
@@ -85,9 +95,12 @@ def _build_weekly_doc(db: Session, project: Project) -> Document:
     doc.add_heading(f"项目周报：{project.name}", level=1)
     doc.add_paragraph(f"项目编号：{project.code}    统计日期：{_utcnow().astimezone().date().isoformat()}")
     tasks = wbs_service.list_tasks_ordered(db, project.id)
-    completed = sum(1 for t in tasks if t.status == "已完成")
+    metrics = progress_service.project_metrics(tasks)
+    effective = progress_service.compute_progress(tasks)
     doc.add_heading("一、本周进展", level=2)
-    doc.add_paragraph(f"任务完成 {completed}/{len(tasks)}")
+    doc.add_paragraph(
+        f"任务完成 {metrics['completed_tasks']}/{metrics['total_tasks']}；整体进度 {metrics['progress']}%"
+    )
     doc.add_heading("二、任务明细", level=2)
     table = doc.add_table(rows=1, cols=5)
     table.style = "Light Grid Accent 1"
@@ -99,7 +112,7 @@ def _build_weekly_doc(db: Session, project: Project) -> Document:
         row[0].text = task.wbs_code
         row[1].text = task.name
         row[2].text = task.status
-        row[3].text = f"{task.progress or 0}%"
+        row[3].text = _progress_text(task, effective)
         row[4].text = f"{task.plan_start or '-'} ~ {task.plan_end or '-'}"
     doc.add_heading("三、风险与问题", level=2)
     risks = list(db.scalars(select(Risk).where(Risk.project_id == project.id, Risk.archived_at.is_(None))))
@@ -117,9 +130,12 @@ def _build_final_doc(db: Session, project: Project) -> Document:
     doc.add_paragraph(f"计划周期：{project.plan_start or '-'} ~ {project.plan_end or '-'}")
 
     tasks = wbs_service.list_tasks_ordered(db, project.id)
-    completed = sum(1 for t in tasks if t.status == "已完成")
+    metrics = progress_service.project_metrics(tasks)
     doc.add_heading("一、项目完成情况", level=2)
-    doc.add_paragraph(f"任务完成率：{completed}/{len(tasks)}")
+    doc.add_paragraph(
+        f"任务完成：{metrics['completed_tasks']}/{metrics['total_tasks']}；整体进度 {metrics['progress']}%"
+    )
+    doc.add_paragraph(f"总工时 {metrics['total_hours']:.1f}h，剩余工时 {metrics['remaining_hours']:.1f}h")
     milestones = list(db.scalars(select(Milestone).where(Milestone.project_id == project.id)))
     doc.add_paragraph(f"里程碑 {len(milestones)} 项：{ '、'.join(m.name for m in milestones) or '-' }")
 

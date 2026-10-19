@@ -7,8 +7,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.time import today_local
 from app.models.stage5 import ProgressSnapshot
 from app.models.task import Task
+from app.services import progress as progress_service
 from app.services import wbs as wbs_service
 
 SNAPSHOT_KEY = "snapshot.policy"
@@ -20,23 +22,26 @@ def _utcnow() -> datetime:
 
 
 def compute_project_state(db: Session, project_id: UUID) -> dict:
+    """项目级状态：统一走 project_metrics，父子工时不重复计入。
+
+    旧实现把父任务与子任务的 work_hours 直接求和，总量虚高近一倍，
+    燃尽图起点因此是错的；现按叶子任务汇总，语义与 ProgressSnapshot 落库字段一致。
+    """
     tasks = wbs_service.list_tasks_ordered(db, project_id)
-    total = len(tasks)
-    completed = sum(1 for t in tasks if t.status == "已完成")
-    total_hours = sum(float(t.work_hours or 0) for t in tasks)
-    remaining_hours = sum(float(t.work_hours or 0) for t in tasks if t.status != "已完成")
+    metrics = progress_service.project_metrics(tasks)
     return {
-        "total_tasks": total,
-        "completed_tasks": completed,
-        "remaining_tasks": total - completed,
-        "total_hours": round(total_hours, 2),
-        "remaining_hours": round(remaining_hours, 2),
+        "total_tasks": metrics["total_tasks"],
+        "completed_tasks": metrics["completed_tasks"],
+        "remaining_tasks": metrics["remaining_tasks"],
+        "total_hours": metrics["total_hours"],
+        "remaining_hours": metrics["remaining_hours"],
     }
 
 
 def capture_snapshot(db: Session, project_id: UUID, snapshot_date: date | None = None) -> ProgressSnapshot:
     """记录当日项目级快照（同一天更新为最新状态，历史日期不变）。"""
-    snapshot_date = snapshot_date or _utcnow().date()
+    # 「今天」统一取北京时间，避免 UTC 与本地日期差一天
+    snapshot_date = snapshot_date or today_local()
     state = compute_project_state(db, project_id)
 
     existing = db.scalar(

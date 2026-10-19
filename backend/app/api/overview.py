@@ -8,17 +8,21 @@
 - 需协调事项   开放问题（待处理/处理中）中：严重度=高 或 已逾期；责任人为空的标注
 排序：danger 优先于 warning，同级按逾期天数降序。
 """
+from collections import defaultdict
 from datetime import date
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
+from app.core.time import today_local
 from app.models.project import Project
 from app.models.stage3 import Issue, Risk
 from app.models.stage5 import Deliverable
 from app.models.task import Milestone, Task
+from app.services.progress import project_metrics
 
 router = APIRouter(prefix="/api", tags=["overview"])
 
@@ -34,7 +38,7 @@ def _days_over(target: date | None, today: date) -> int:
 
 @router.get("/overview")
 def overview(db: Session = Depends(get_db)) -> dict:
-    today = date.today()
+    today = today_local()
     projects = list(
         db.scalars(
             select(Project).where(Project.deleted_at.is_(None), Project.archived_at.is_(None))
@@ -81,12 +85,13 @@ def overview(db: Session = Depends(get_db)) -> dict:
         else []
     )
 
-    def progress_of(pid):
-        pt = [t for t in tasks if t.project_id == pid]
-        if not pt:
-            return 0
-        done = sum(1 for t in pt if t.status == "已完成")
-        return round(done / len(pt) * 100)
+    # 统一口径：进度/工时/计数全部来自 project_metrics（叶子加权，父子不重复计入）
+    tasks_by_project: dict[UUID, list[Task]] = defaultdict(list)
+    for task in tasks:
+        tasks_by_project[task.project_id].append(task)
+
+    def metrics_of(pid) -> dict:
+        return project_metrics(tasks_by_project.get(pid, []))
 
     def overdue_tasks_of(pid):
         return [
@@ -115,6 +120,7 @@ def overview(db: Session = Depends(get_db)) -> dict:
         od_tasks = overdue_tasks_of(p.id)
         od_miles = overdue_milestones_of(p.id)
         high_risk_cnt = sum(1 for r in risks_open if r.project_id == p.id and r.level == "高")
+        metrics = metrics_of(p.id)
         project_rows.append(
             {
                 "id": str(p.id),
@@ -123,9 +129,9 @@ def overview(db: Session = Depends(get_db)) -> dict:
                 "status": p.status,
                 "plan_start": p.plan_start.isoformat() if p.plan_start else None,
                 "plan_end": p.plan_end.isoformat() if p.plan_end else None,
-                "task_total": sum(1 for t in tasks if t.project_id == p.id),
-                "task_done": sum(1 for t in tasks if t.project_id == p.id and t.status == "已完成"),
-                "progress": progress_of(p.id),
+                "task_total": metrics["total_tasks"],
+                "task_done": metrics["completed_tasks"],
+                "progress": metrics["progress"],
                 "risk_open": sum(1 for r in risks_open if r.project_id == p.id),
                 "issue_open": sum(1 for i in issues_open if i.project_id == p.id),
                 "high_risk": high_risk_cnt,
