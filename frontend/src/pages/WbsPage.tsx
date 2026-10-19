@@ -223,7 +223,12 @@ export default function WbsPage() {
       title: 'WBS',
       dataIndex: 'wbs_code',
       width: 90,
-      render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+      // 编码如 1.2 / 2.1.12 在窄列里会在小数点后折行（显示成 "1." + "2" 两行），必须禁止换行
+      render: (v: string) => (
+        <Typography.Text code style={{ whiteSpace: 'nowrap' }}>
+          {v}
+        </Typography.Text>
+      ),
     },
     { title: '任务名称', dataIndex: 'name', width: 220 },
     {
