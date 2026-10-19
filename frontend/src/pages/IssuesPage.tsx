@@ -1,5 +1,21 @@
-import { PlusOutlined } from '@ant-design/icons'
-import { App, Button, Card, DatePicker, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd'
+import { PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import {
+  App,
+  Button,
+  Card,
+  DatePicker,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Tooltip,
+} from 'antd'
+import dayjs from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -7,6 +23,33 @@ import type { IssueItem } from '../api/stage3'
 import { closeIssue, createIssue, deleteIssue, listIssues, updateIssue } from '../api/stage3'
 
 const SEVERITY_TAG: Record<string, string> = { 高: 'red', 中: 'orange', 低: 'green' }
+const CLOSED_STATUS = '已关闭'
+/** 久拖阈值：> 7 天橙色提醒，> 14 天红色预警 */
+const WARN_DAYS = 7
+const DANGER_DAYS = 14
+
+/**
+ * 计算问题停留天数（按自然日）。
+ * 未关闭 = 今天 − 创建日；已关闭 = 关闭/验证日 − 创建日。
+ * 后端 Issue 模型无 closed_at 字段，关闭时写入 verified_at（backend/app/api/issues.py:91），
+ * 缺失时回退到 updated_at；日期缺失返回 null。
+ */
+function stayDays(issue: IssueItem): number | null {
+  const start = dayjs(issue.created_at)
+  if (!start.isValid()) return null
+  const end =
+    issue.status === CLOSED_STATUS ? dayjs(issue.verified_at ?? issue.updated_at) : dayjs()
+  if (!end.isValid()) return null
+  const days = end.startOf('day').diff(start.startOf('day'), 'day')
+  return days >= 0 ? days : null
+}
+
+/** 未关闭且停留超过阈值的天数着色 */
+function stayColor(days: number): string {
+  if (days > DANGER_DAYS) return 'red'
+  if (days > WARN_DAYS) return 'orange'
+  return 'green'
+}
 
 export default function IssuesPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -17,6 +60,9 @@ export default function IssuesPage() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>()
   const [severityFilter, setSeverityFilter] = useState<string | undefined>()
   const [overdue, setOverdue] = useState(false)
+  // keyword = 输入框当前值（受控），search = 已提交的搜索词（后端 q 参数，匹配标题/详情）
+  const [keyword, setKeyword] = useState<string>('')
+  const [search, setSearch] = useState<string>('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<IssueItem | null>(null)
   const [closeOpen, setCloseOpen] = useState<IssueItem | null>(null)
@@ -27,17 +73,34 @@ export default function IssuesPage() {
     if (!projectId) return
     setLoading(true)
     try {
-      setItems(await listIssues(projectId, { status: statusFilter, severity: severityFilter, overdue: overdue || undefined }))
+      setItems(
+        await listIssues(projectId, {
+          status: statusFilter,
+          severity: severityFilter,
+          overdue: overdue || undefined,
+          q: search || undefined,
+        }),
+      )
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载问题失败')
     } finally {
       setLoading(false)
     }
-  }, [projectId, statusFilter, severityFilter, overdue, message])
+  }, [projectId, statusFilter, severityFilter, overdue, search, message])
 
   useEffect(() => {
     void fetchData()
   }, [fetchData])
+
+  // 顶部汇总：未关闭条数 / 其中逾期（超过要求解决日期）/ 久拖（停留 > 14 天）
+  const openItems = items.filter(i => i.status !== CLOSED_STATUS)
+  const overdueItems = openItems.filter(
+    i => !!i.due_date && dayjs(i.due_date).isBefore(dayjs(), 'day'),
+  )
+  const stalledItems = openItems.filter(i => {
+    const days = stayDays(i)
+    return days !== null && days > DANGER_DAYS
+  })
 
   const openCreate = () => {
     setEditing(null)
@@ -109,39 +172,162 @@ export default function IssuesPage() {
         title="问题台账"
         extra={
           <Space wrap>
-            <Select placeholder="状态" allowClear style={{ width: 110 }} options={['待处理', '处理中', '已关闭'].map((v) => ({ value: v, label: v }))} onChange={setStatusFilter} />
-            <Select placeholder="严重度" allowClear style={{ width: 110 }} options={['高', '中', '低'].map((v) => ({ value: v, label: v }))} onChange={setSeverityFilter} />
-            <Button type={overdue ? 'primary' : 'default'} danger={overdue} onClick={() => setOverdue((v) => !v)}>仅逾期</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建问题</Button>
+            <Input.Search
+              allowClear
+              placeholder="搜索标题 / 详情"
+              style={{ width: 180 }}
+              value={keyword}
+              onChange={e => {
+                const next = e.target.value
+                setKeyword(next)
+                // 清空（含点击清除图标）时立即恢复全量，无需再点一次搜索
+                if (next === '') setSearch('')
+              }}
+              onSearch={value => setSearch(value.trim())}
+            />
+            <Select
+              placeholder="状态"
+              allowClear
+              style={{ width: 110 }}
+              options={['待处理', '处理中', '已关闭'].map(v => ({ value: v, label: v }))}
+              onChange={setStatusFilter}
+            />
+            <Select
+              placeholder="严重度"
+              allowClear
+              style={{ width: 110 }}
+              options={['高', '中', '低'].map(v => ({ value: v, label: v }))}
+              onChange={setSeverityFilter}
+            />
+            <Button
+              type={overdue ? 'primary' : 'default'}
+              danger={overdue}
+              onClick={() => setOverdue(v => !v)}
+            >
+              仅逾期
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              新建问题
+            </Button>
           </Space>
         }
       >
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <Space size="large" wrap>
+            <Statistic title="未关闭问题（当前筛选结果）" value={openItems.length} suffix="条" />
+            <Statistic
+              title="其中逾期（超过要求解决日期）"
+              value={overdueItems.length}
+              suffix="条"
+              valueStyle={{ color: overdueItems.length > 0 ? '#cf1322' : undefined }}
+            />
+            <Statistic
+              title={`久拖未决（已停留 > ${DANGER_DAYS} 天）`}
+              value={stalledItems.length}
+              suffix="条"
+              valueStyle={{ color: stalledItems.length > 0 ? '#cf1322' : undefined }}
+            />
+          </Space>
+          <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+            停留天数口径：未关闭 = 今天 − 创建日；已关闭 = 关闭（验证）时间 − 创建日（后端无
+            closed_at 字段，关闭时间取 verified_at，缺失回退 updated_at）
+          </div>
+        </Card>
         <Table<IssueItem>
           rowKey="id"
           loading={loading}
           dataSource={items}
           pagination={false}
           size="small"
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1100 }}
+          onRow={record => {
+            const days = stayDays(record)
+            const stalled = record.status !== CLOSED_STATUS && days !== null && days > DANGER_DAYS
+            return stalled ? { style: { background: '#fff1f0' } } : {}
+          }}
           columns={[
             { title: '标题', dataIndex: 'title', width: 220 },
-            { title: '严重度', dataIndex: 'severity', width: 90, render: (v: string | null) => (v ? <Tag color={SEVERITY_TAG[v] ?? 'default'}>{v}</Tag> : '-') },
-            { title: '负责人', dataIndex: 'owner', width: 90, render: (v: string | null) => v ?? '-' },
-            { title: '要求解决日期', dataIndex: 'due_date', width: 120, render: (v: string | null) => v ?? '-' },
-            { title: '状态', dataIndex: 'status', width: 90, render: (v: string) => <Tag color={v === '已关闭' ? 'green' : 'blue'}>{v}</Tag> },
-            { title: '关闭结论', dataIndex: 'closure_result', render: (v: string | null) => v ?? '-' },
+            {
+              title: '严重度',
+              dataIndex: 'severity',
+              width: 90,
+              render: (v: string | null) =>
+                v ? <Tag color={SEVERITY_TAG[v] ?? 'default'}>{v}</Tag> : '-',
+            },
+            {
+              title: '负责人',
+              dataIndex: 'owner',
+              width: 90,
+              render: (v: string | null) => v ?? '-',
+            },
+            {
+              title: '要求解决日期',
+              dataIndex: 'due_date',
+              width: 120,
+              render: (v: string | null) => v ?? '-',
+            },
+            {
+              title: (
+                <Tooltip title="未关闭 = 今天 − 创建日；已关闭 = 关闭（验证）时间 − 创建日">
+                  停留天数 <QuestionCircleOutlined />
+                </Tooltip>
+              ),
+              key: 'stay',
+              width: 130,
+              sorter: (a, b) => (stayDays(a) ?? -1) - (stayDays(b) ?? -1),
+              render: (_: unknown, r) => {
+                const days = stayDays(r)
+                if (days === null) return '-'
+                if (r.status === CLOSED_STATUS) return <Tag>{days} 天（已闭环）</Tag>
+                return <Tag color={stayColor(days)}>{days} 天</Tag>
+              },
+            },
+            {
+              title: '状态',
+              dataIndex: 'status',
+              width: 200,
+              render: (v: string, r) => {
+                const days = stayDays(r)
+                const stalled = v !== CLOSED_STATUS && days !== null && days > WARN_DAYS
+                return (
+                  <Space size={4} wrap>
+                    <Tag color={v === CLOSED_STATUS ? 'green' : 'blue'}>{v}</Tag>
+                    {stalled ? <Tag color={stayColor(days as number)}>已停留 {days} 天</Tag> : null}
+                  </Space>
+                )
+              },
+            },
+            {
+              title: '关闭结论',
+              dataIndex: 'closure_result',
+              render: (v: string | null) => v ?? '-',
+            },
             {
               title: '操作',
               key: 'actions',
               width: 180,
               render: (_: unknown, r) => (
                 <Space size="small">
-                  <Button size="small" onClick={() => openEdit(r)}>编辑</Button>
-                  {r.status !== '已关闭' ? (
-                    <Button size="small" type="primary" ghost onClick={() => { setCloseOpen(r); closeForm.resetFields() }}>关闭</Button>
+                  <Button size="small" onClick={() => openEdit(r)}>
+                    编辑
+                  </Button>
+                  {r.status !== CLOSED_STATUS ? (
+                    <Button
+                      size="small"
+                      type="primary"
+                      ghost
+                      onClick={() => {
+                        setCloseOpen(r)
+                        closeForm.resetFields()
+                      }}
+                    >
+                      关闭
+                    </Button>
                   ) : null}
                   <Popconfirm title="确认删除该问题？" onConfirm={() => void handleDelete(r)}>
-                    <Button size="small" danger>删除</Button>
+                    <Button size="small" danger>
+                      删除
+                    </Button>
                   </Popconfirm>
                 </Space>
               ),
@@ -150,14 +336,24 @@ export default function IssuesPage() {
         />
       </Card>
 
-      <Modal title={editing ? '编辑问题' : '新建问题'} open={modalOpen} onCancel={() => setModalOpen(false)} onOk={() => void handleOk()} width={600}>
+      <Modal
+        title={editing ? '编辑问题' : '新建问题'}
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        onOk={() => void handleOk()}
+        width={600}
+      >
         <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
-          <Form.Item name="title" label="问题标题" rules={[{ required: true, message: '请输入问题标题' }]}>
+          <Form.Item
+            name="title"
+            label="问题标题"
+            rules={[{ required: true, message: '请输入问题标题' }]}
+          >
             <Input />
           </Form.Item>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <Form.Item name="severity" label="严重度">
-              <Select allowClear options={['高', '中', '低'].map((v) => ({ value: v, label: v }))} />
+              <Select allowClear options={['高', '中', '低'].map(v => ({ value: v, label: v }))} />
             </Form.Item>
             <Form.Item name="owner" label="负责人">
               <Input />
@@ -180,9 +376,19 @@ export default function IssuesPage() {
         </Form>
       </Modal>
 
-      <Modal title="关闭问题（必须填写解决结果）" open={!!closeOpen} onCancel={() => setCloseOpen(null)} onOk={() => void handleClose()} destroyOnClose>
+      <Modal
+        title="关闭问题（必须填写解决结果）"
+        open={!!closeOpen}
+        onCancel={() => setCloseOpen(null)}
+        onOk={() => void handleClose()}
+        destroyOnClose
+      >
         <Form form={closeForm} layout="vertical" style={{ marginTop: 12 }}>
-          <Form.Item name="closure_result" label="解决结果" rules={[{ required: true, message: '关闭问题必须填写解决结果' }]}>
+          <Form.Item
+            name="closure_result"
+            label="解决结果"
+            rules={[{ required: true, message: '关闭问题必须填写解决结果' }]}
+          >
             <Input.TextArea rows={3} placeholder="说明解决与验证结果" />
           </Form.Item>
           <Form.Item name="verified_by" label="验证人">
