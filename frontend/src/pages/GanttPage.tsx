@@ -74,6 +74,26 @@ function isExportableNode(domNode: HTMLElement): boolean {
   return !EXCLUDED_EXPORT_CLASSES.some((cls) => classList.contains(cls))
 }
 
+/**
+ * WBS 编码比较器：'1.10' 应排在 '1.2' 之后，字符串比较会得出相反结果。
+ * 逐段转数字比元组；非数字段用 1e6 兜底（与后端 app/services/wbs.py::wbs_sort_key 同口径）。
+ */
+function compareWbsCode(a: string, b: string): number {
+  const toKey = (code: string): number[] =>
+    code.split('.').map((part) => {
+      const value = Number.parseInt(part, 10)
+      return Number.isFinite(value) ? value : 1e6
+    })
+  const left = toKey(a)
+  const right = toKey(b)
+  const len = Math.max(left.length, right.length)
+  for (let i = 0; i < len; i += 1) {
+    const diff = (left[i] ?? 0) - (right[i] ?? 0)
+    if (diff !== 0) return diff
+  }
+  return 0
+}
+
 /** 构建 parent_id -> 直接子任务 的索引（key 为 null 表示顶级任务） */
 function buildChildrenMap(tasks: TaskItem[]): Map<string | null, TaskItem[]> {
   const map = new Map<string | null, TaskItem[]>()
@@ -222,7 +242,7 @@ export default function GanttPage() {
   const { items: ganttItems, rangeStart, rangeEnd } = useMemo(() => {
     const childrenMap = buildChildrenMap(tasks)
     const sortNodes = (list: TaskItem[]) =>
-      list.slice().sort((a, b) => a.sort_order - b.sort_order || a.wbs_code.localeCompare(b.wbs_code))
+      list.slice().sort((a, b) => a.sort_order - b.sort_order || compareWbsCode(a.wbs_code, b.wbs_code))
 
     const toItem = (task: TaskItem): GanttItemInput => ({
       id: task.id,

@@ -56,6 +56,12 @@ curl http://localhost:8180/api/health   # 期望 {"status":"ok","db":"ok"}
 
 时区说明：容器 `TZ=Asia/Shanghai` 仅影响日志等显示时间；**业务日期口径（进度快照、燃尽图、驾驶舱逾期判定）固定按北京时间 `Asia/Shanghai` 计算**，刻意忽略容器/宿主机时区，避免 UTC 容器在北京时间 00:00–08:00 之间把快照写到"昨天"。该口径依赖 `tzdata` 包（随镜像构建安装；缺失时自动回退固定 +08:00，上海无夏令时，结果一致）。注意：`backend/requirements.txt` 变更后必须 `docker compose up -d --build` 重建镜像才会生效。
 
+验证业务日期口径（与容器 TZ 无关，应恒等于 `date -u -d '+8 hours' +%F`）：
+
+```bash
+docker compose exec backend python -c "from app.core.time import today_local; print(today_local())"
+```
+
 ## 四、启动 / 停止 / 重启
 
 ```bash
