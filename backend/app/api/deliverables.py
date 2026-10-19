@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import hashlib
 import io
+import logging
+import mimetypes
+import re
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import select
@@ -21,6 +25,8 @@ from app.models.setting import Setting
 from app.models.stage5 import Attachment, Deliverable
 from app.schemas.stage5 import DeliverableCreate, DeliverableRead, DeliverableUpdate, TemplateItem
 from app.services import audit as audit_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["deliverables"])
 
@@ -160,6 +166,12 @@ def update_deliverable(deliverable_id: UUID, payload: DeliverableUpdate, db: Ses
 @router.delete("/deliverables/{deliverable_id}", status_code=204)
 def delete_deliverable(deliverable_id: UUID, db: Session = Depends(get_db)) -> None:
     item = _get_or_404(db, deliverable_id)
+    # 级联清理附件：先删磁盘文件再删行，文件缺失不影响主流程
+    removed = _purge_attachments(db, "deliverable", item.id)
+    summary = f"删除交付资料：{item.name}"
+    if removed:
+        summary += f"（同时清理 {removed} 个附件）"
+    audit_service.record(db, item.project_id, "deliverable", item.id, "delete", summary)
     db.delete(item)
     db.commit()
 
@@ -172,32 +184,179 @@ def _get_or_404(db: Session, deliverable_id: UUID) -> Deliverable:
 
 
 # ---------- 附件 ----------
+#
+# 存储约定（自本次变更起）：
+#   DB 存「相对附件根目录」的路径，形如 "<project_id>/<uuid>-<安全文件名>"，
+#   换挂载点/换 data_dir 后只需改环境变量即可，不再写死绝对路径。
+#   历史数据存的是绝对路径（旧实现 str(Path)），由 _resolve_path 兼容读取，不做迁移。
+
+ATTACHMENT_DIR_NAME = "attachments"
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+_SAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9\u4e00-\u9fa5._-]")
+_MEDIA_TYPES: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".svg": "image/svg+xml",
+    ".txt": "text/plain; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".csv": "text/csv; charset=utf-8",
+    ".json": "application/json",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".zip": "application/zip",
+}
+# 允许 inline 预览的类型：仅 PDF 与图片。其余类型（含 svg/html，避免同域脚本执行）强制下载。
+_INLINE_SAFE_MEDIA_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/bmp",
+}
+
+
+def _attachment_root() -> Path:
+    """附件根目录：<data_dir>/attachments。"""
+    return Path(get_settings().data_dir) / ATTACHMENT_DIR_NAME
+
+
+def _safe_storage_name(raw_name: str | None) -> str:
+    """清洗上传文件名，防路径穿越：取 basename + 白名单过滤。
+
+    示例："../../etc/passwd" -> "passwd"，"a/b 报 告.pdf" -> "a_b_报告.pdf"。
+    """
+    base = Path((raw_name or "").replace("\\", "/")).name
+    cleaned = _SAFE_NAME_CHARS.sub("", base.replace(" ", "_")).strip(". ")
+    return cleaned[:120] or "attachment"
+
+
+def _display_name(raw_name: str | None, fallback: str) -> str:
+    """展示用文件名：保留中文与原始大小写，仅去掉目录部分并限长。"""
+    name = Path((raw_name or "").replace("\\", "/")).name.strip()
+    return (name or fallback)[:200]
+
+
+def _resolve_path(storage_path: str) -> Path:
+    """把 DB 中的 storage_path 解析为磁盘路径（兼容历史绝对路径）。
+
+    - 绝对路径（旧数据，如 /data/attachments/xxx）：直接沿用；
+    - 相对路径（新数据，如 <project_id>/<uuid>-name.ext）：拼到附件根目录；
+    - 相对路径里出现 ".." 企图越出根目录时，退化为根目录下的 basename（读取即 404）。
+    """
+    raw = (storage_path or "").strip()
+    root = _attachment_root()
+    if not raw:
+        return root / "__missing__"
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        return candidate
+    target = root / candidate
+    try:
+        target.resolve().relative_to(root.resolve())
+    except ValueError:
+        return root / candidate.name
+    return target
+
+
+def _remove_file(storage_path: str) -> None:
+    """删除磁盘附件；文件已不存在或删除失败均不抛出（DB 行照删）。"""
+    try:
+        path = _resolve_path(storage_path)
+        if path.is_file():
+            path.unlink()
+    except OSError as exc:  # noqa: BLE001
+        logger.warning("附件文件删除失败（storage_path=%s）：%s", storage_path, exc)
+
+
+def _attachment_payload(attachment: Attachment, with_owner: bool = False) -> dict:
+    payload = {
+        "id": str(attachment.id),
+        "file_name": attachment.file_name,
+        "size_bytes": attachment.size_bytes,
+        "mime_type": attachment.mime_type,
+        "uploaded_at": attachment.uploaded_at.isoformat(),
+    }
+    if with_owner:
+        payload["deliverable_id"] = str(attachment.object_id)
+    return payload
+
+
+def _purge_attachments(db: Session, object_type: str, object_id: UUID) -> int:
+    """删除某业务对象的全部附件（磁盘文件 + DB 行），返回清理数量。"""
+    rows = db.scalars(
+        select(Attachment).where(
+            Attachment.object_type == object_type, Attachment.object_id == object_id
+        )
+    ).all()
+    for row in rows:
+        _remove_file(row.storage_path)
+        db.delete(row)
+    return len(rows)
+
+
+def _guess_media_type(file_name: str, mime_type: str | None) -> str:
+    """按扩展名推断 media_type：显式映射 > mimetypes > 上传时记录 > 二进制兜底。"""
+    suffix = Path(file_name).suffix.lower()
+    if suffix in _MEDIA_TYPES:
+        return _MEDIA_TYPES[suffix]
+    guessed = mimetypes.guess_type(file_name)[0]
+    if guessed:
+        return guessed
+    return mime_type or "application/octet-stream"
+
+
+def _content_disposition(file_name: str, disposition: str) -> str:
+    """RFC 5987：ASCII 兜底 filename + UTF-8 编码 filename*，保证中文名不乱码。"""
+    ascii_name = "".join(ch if ord(ch) < 128 else "_" for ch in file_name).replace('"', "_")
+    return f"{disposition}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(file_name, safe='')}"
+
+
+def _iter_file(path: Path, chunk_size: int = 1024 * 1024):
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
 
 @router.post("/deliverables/{deliverable_id}/attachments", status_code=201)
 async def upload_attachment(deliverable_id: UUID, file: UploadFile = File(...), db: Session = Depends(get_db)) -> dict:
     item = _get_or_404(db, deliverable_id)
     content = await file.read()
-    if len(content) > 50 * 1024 * 1024:
+    if len(content) > MAX_ATTACHMENT_BYTES:
         raise AppError(422, "file_too_large", "附件不能超过 50MB")
     sha256 = hashlib.sha256(content).hexdigest()
-    settings = get_settings()
-    attach_dir = Path(settings.data_dir) / "attachments"
-    attach_dir.mkdir(parents=True, exist_ok=True)
-    storage_name = f"{uuid.uuid4().hex}-{file.filename}"
-    storage_path = attach_dir / storage_name
-    storage_path.write_bytes(content)
+    safe_name = _safe_storage_name(file.filename)
+    storage_name = f"{uuid.uuid4().hex}-{safe_name}"
+    # DB 只存相对路径：<project_id>/<uuid>-<name>，绝对路径换挂载点即失联
+    relative_path = f"{item.project_id}/{storage_name}"
+    target_dir = _attachment_root() / str(item.project_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    (target_dir / storage_name).write_bytes(content)
 
     attachment = Attachment(
         object_type="deliverable",
         object_id=item.id,
-        file_name=file.filename or storage_name,
-        storage_path=str(storage_path),
+        file_name=_display_name(file.filename, safe_name),
+        storage_path=relative_path,
         size_bytes=len(content),
         mime_type=file.content_type,
         sha256=sha256,
         uploaded_at=_utcnow(),
     )
     db.add(attachment)
+    db.flush()
+    audit_service.record(db, item.project_id, "attachment", attachment.id, "upload", f"上传附件：{attachment.file_name}")
     db.commit()
     return {"id": str(attachment.id), "file_name": attachment.file_name, "size_bytes": attachment.size_bytes}
 
@@ -210,16 +369,75 @@ def list_attachments(deliverable_id: UUID, db: Session = Depends(get_db)) -> lis
             Attachment.object_type == "deliverable", Attachment.object_id == deliverable_id
         )
     ).all()
-    return [
-        {
-            "id": str(a.id),
-            "file_name": a.file_name,
-            "size_bytes": a.size_bytes,
-            "mime_type": a.mime_type,
-            "uploaded_at": a.uploaded_at.isoformat(),
-        }
-        for a in rows
-    ]
+    return [_attachment_payload(a) for a in rows]
+
+
+@router.get("/projects/{project_id}/deliverables/attachments")
+def list_project_attachments(project_id: UUID, db: Session = Depends(get_db)) -> dict:
+    """按项目一次性取回全部交付资料附件（供列表页展示「附件(n)」徽标，避免逐行拉取）。"""
+    deliverable_ids = list(
+        db.scalars(select(Deliverable.id).where(Deliverable.project_id == project_id)).all()
+    )
+    if not deliverable_ids:
+        return {"attachments": []}
+    rows = db.scalars(
+        select(Attachment)
+        .where(
+            Attachment.object_type == "deliverable",
+            Attachment.object_id.in_(deliverable_ids),
+        )
+        .order_by(Attachment.uploaded_at)
+    ).all()
+    return {"attachments": [_attachment_payload(a, with_owner=True) for a in rows]}
+
+
+@router.get("/attachments/{attachment_id}/download")
+def download_attachment(
+    attachment_id: UUID,
+    inline: bool = Query(False, description="传 1/true 时用 inline 方式返回，供浏览器直接预览"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """下载/预览附件。文件缺失返回 404（统一错误结构 {"error": {...}}）。"""
+    attachment = _get_attachment_or_404(db, attachment_id)
+    path = _resolve_path(attachment.storage_path)
+    if not path.is_file():
+        raise AppError(404, "not_found", "附件文件不存在，可能已被清理")
+    media_type = _guess_media_type(attachment.file_name, attachment.mime_type)
+    disposition = "inline" if inline and media_type in _INLINE_SAFE_MEDIA_TYPES else "attachment"
+    headers = {
+        "Content-Disposition": _content_disposition(attachment.file_name, disposition),
+        "Content-Length": str(path.stat().st_size),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, max-age=0, must-revalidate",
+    }
+    return StreamingResponse(_iter_file(path), media_type=media_type, headers=headers)
+
+
+@router.delete("/attachments/{attachment_id}", status_code=204)
+def delete_attachment(attachment_id: UUID, db: Session = Depends(get_db)) -> None:
+    """删除单个附件：DB 行 + 磁盘文件（文件已丢失也算成功）。"""
+    attachment = _get_attachment_or_404(db, attachment_id)
+    project_id = _attachment_project_id(db, attachment)
+    file_name = attachment.file_name
+    _remove_file(attachment.storage_path)
+    audit_service.record(db, project_id, "attachment", attachment.id, "delete", f"删除附件：{file_name}")
+    db.delete(attachment)
+    db.commit()
+
+
+def _get_attachment_or_404(db: Session, attachment_id: UUID) -> Attachment:
+    attachment = db.scalar(select(Attachment).where(Attachment.id == attachment_id))
+    if attachment is None:
+        raise AppError(404, "not_found", "附件不存在")
+    return attachment
+
+
+def _attachment_project_id(db: Session, attachment: Attachment) -> UUID | None:
+    """按多态关联反查所属项目（用于审计日志）；未知类型返回 None。"""
+    if attachment.object_type == "deliverable":
+        item = db.scalar(select(Deliverable).where(Deliverable.id == attachment.object_id))
+        return item.project_id if item else None
+    return None
 
 
 # ---------- Excel 导入导出 ----------

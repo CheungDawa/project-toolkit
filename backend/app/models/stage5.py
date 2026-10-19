@@ -72,6 +72,8 @@ class Attachment(Base):
     object_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     object_id: Mapped[uuid.UUID] = mapped_column(Uuid(), nullable=False, index=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 存储路径约定：新数据存「相对附件根目录」的路径（<project_id>/<uuid>-<安全文件名>）；
+    # 历史数据为绝对路径，读取时由 app.api.deliverables._resolve_path 兼容（未做迁移）。
     storage_path: Mapped[str] = mapped_column(Text(), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer(), nullable=False, default=0)
     mime_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
