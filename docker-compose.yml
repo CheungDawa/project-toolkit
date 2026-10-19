@@ -54,24 +54,26 @@ services:
       timeout: 3s
       retries: 12
 
+  # 自动备份：脚本在 scripts/backup-loop.sh 里（纯 ASCII，可独立审阅）。
+  # 产物落在 ./data/backups/pt_YYYYmmdd_HHMMSS.dump，成功后写日志 "[backup] OK: ..."；
+  # 失败则留下 LAST_FAILURE.txt 并每小时重试。
   backup:
     image: postgres:17-alpine
     profiles: ["backup"]
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGHOST: db
+      PGUSER: pt
+      PGDATABASE: projecttoolkit
+      TZ: Asia/Shanghai
     volumes:
       - ./data/backups:/backups
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        while true; do
-          echo "[backup] $(date +'%F %T') 濮ｅ繑妫╂径鍥﹀敜瀵偓婵?
-          pg_dump -h db -U pt -d projecttoolkit -Fc | gzip > /backups/pt_$(date +%Y%m%d_%H%M%S).dump.gz
-          find /backups -name 'pt_*.dump.gz' -mtime +14 -delete
-          echo "[backup] 鐎瑰本鍨氶敍宀€鐡戝?24 鐏忓繑妞?
-          sleep 86400
-        done
+      - ./data:/data:ro
+      - ./scripts/backup-loop.sh:/backup-loop.sh:ro
+    entrypoint: ["/bin/sh", "/backup-loop.sh"]
+    # 与 frontend/backend/db 一致：脚本若因异常（挂载不可写、sleep 参数异常等）退出，
+    # 必须被拉起，否则会退化成"容器 Down、没人发现、没有备份"的原始故障形态。
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
