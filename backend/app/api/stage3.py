@@ -1,4 +1,5 @@
 """变更跟踪 / 干系人 / 沟通历史 / 审计日志 API。"""
+import logging
 from datetime import date, datetime, timezone
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.errors import AppError
+from app.models.project import Project
 from app.models.stage3 import (
     ActivityLog,
     ChangeRequest,
@@ -28,11 +30,30 @@ from app.schemas.stage3 import (
 )
 from app.services import audit
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api", tags=["changes-stakeholders-audit"])
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _ensure_project(db: Session, project_id: UUID) -> Project:
+    """项目必须存在且未删除，否则 404（避免让 FK 异常落到行级错误里）。"""
+    project = db.scalar(
+        select(Project).where(Project.id == project_id, Project.deleted_at.is_(None))
+    )
+    if project is None:
+        raise AppError(404, "not_found", "项目不存在")
+    return project
+
+
+def _safe_rollback(db: Session) -> None:
+    try:
+        db.rollback()
+    except Exception:  # noqa: BLE001
+        logger.exception("回滚会话失败")
 
 
 # ---------- 变更 ----------
@@ -144,24 +165,88 @@ class StakeholderImportRequest(BaseModel):
 def import_stakeholders(
     project_id: UUID, payload: StakeholderImportRequest, db: Session = Depends(get_db)
 ) -> dict:
-    """批量导入干系人（旧工具迁移用）；错误行返回序号与原因。"""
+    """批量导入干系人（旧工具迁移用）。
+
+    加固点：
+    1. 项目不存在 → 404（不再让外键冲突伪装成行级错误，也不会让收尾审计炸成 500）；
+    2. 同一项目内「姓名 + 单位」已存在（含本批次内重复）→ 跳过并计入 skipped，重复导入不再翻倍；
+    3. 单行 Db 异常用 savepoint（begin_nested）隔离，不影响其余行；
+    4. 全部行构造完成后**单次提交**，审计与可选收尾操作放在提交之后且失败只记日志。
+
+    返回：{"created": int, "skipped": int, "errors": [{"row", "message"}]}
+    """
+    _ensure_project(db, project_id)
+
+    handled: set[tuple[str, str]] = set()
+    for name, org in db.execute(
+        select(Stakeholder.name, Stakeholder.org).where(Stakeholder.project_id == project_id)
+    ).all():
+        handled.add(_identity(name, org))
+
     created = 0
+    skipped = 0
     errors: list[dict] = []
     for index, item in enumerate(payload.items, start=1):
+        data = item.model_dump()
+        name = str(data.get("name") or "").strip()
+        if not name:
+            errors.append({"row": index, "message": "姓名不能为空"})
+            continue
+        org = data.get("org")
+        org = str(org).strip() if org not in (None, "") else None
+        key = _identity(name, org)
+        if key in handled:
+            skipped += 1
+            continue
         try:
-            stakeholder = Stakeholder(project_id=project_id, **item.model_dump())
-            db.add(stakeholder)
-            db.commit()
-            created += 1
+            with db.begin_nested():  # savepoint：单行失败只回滚这一行
+                data["name"] = name
+                data["org"] = org
+                db.add(Stakeholder(project_id=project_id, **data))
+                db.flush()  # 立即落 SQL，使行级错误在 savepoint 内暴露
         except Exception as exc:  # noqa: BLE001
-            db.rollback()
+            logger.warning("导入干系人第 %s 行失败：%s", index, exc)
             errors.append({"row": index, "message": str(exc)})
-    audit.record(
-        db, project_id, "stakeholder", None, "import",
-        f"批量导入干系人：成功 {created} 条，失败 {len(errors)} 条",
+            continue
+        handled.add(key)
+        created += 1
+
+    if created:
+        try:
+            db.commit()
+        except Exception as exc:  # noqa: BLE001
+            _safe_rollback(db)
+            logger.exception("批量导入干系人提交失败，已整批回滚")
+            raise AppError(
+                422, "import_failed", f"批量导入干系人失败：{exc}"
+            ) from None
+
+    _record_import_audit(db, project_id, created, skipped, errors)
+    return {"created": created, "skipped": skipped, "errors": errors}
+
+
+def _identity(name: str | None, org: str | None) -> tuple[str, str]:
+    """去重键：姓名 + 单位（大小写/空格不敏感）。"""
+    return (
+        str(name or "").strip().casefold(),
+        str(org or "").strip().casefold(),
     )
-    db.commit()
-    return {"created": created, "errors": errors}
+
+
+def _record_import_audit(
+    db: Session, project_id: UUID, created: int, skipped: int, errors: list[dict]
+) -> None:
+    """审计写在数据提交之后；失败只记日志，绝不让接口变成 500。"""
+    try:
+        audit.record(
+            db, project_id, "stakeholder", None, "import",
+            f"批量导入干系人：新增 {created} 条，跳过重复 {skipped} 条，失败 {len(errors)} 条",
+            payload_diff={"created": created, "skipped": skipped, "errors": errors[:20]},
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("批量导入干系人后写入审计日志失败（数据已提交，不影响导入结果）")
+        _safe_rollback(db)
 
 
 # ---------- 沟通历史（P1） ----------

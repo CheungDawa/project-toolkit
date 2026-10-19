@@ -8,6 +8,7 @@ from app.api.stage3 import router as stage3_router
 from app.api.tasks import router as tasks_router
 from app.core.config import get_settings
 from app.core.errors import register_handlers
+from app.core.exceptions import register_global_handlers
 from app.core.logging import setup_logging
 
 
@@ -27,6 +28,8 @@ def create_app() -> FastAPI:
         )
 
     register_handlers(app)
+    # 兜底放在既有处理器之后注册：Exception 只兜住没人处理的异常，不改变既有状态码
+    register_global_handlers(app)
     app.include_router(health.router)
     app.include_router(projects.router)
     app.include_router(settings_router)
