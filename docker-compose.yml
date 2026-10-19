@@ -6,11 +6,18 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
     ports:
-      - "${PT_HTTP_PORT:-8180}:80"
+      # 安全：全站 API 无任何鉴权，只绑定回环地址，禁止暴露到局域网/公网；
+      # 远程访问请走 SSH 隧道（见 docs/deployment.md 第六节）。
+      - "127.0.0.1:${PT_HTTP_PORT:-8180}:80"
     depends_on:
       backend:
         condition: service_started
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
       interval: 10s
@@ -37,6 +44,11 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   db:
     image: postgres:17-alpine
@@ -53,6 +65,11 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 自动备份：脚本在 scripts/backup-loop.sh 里（纯 ASCII，可独立审阅）。
   # 产物落在 ./data/backups/pt_YYYYmmdd_HHMMSS.dump，成功后写日志 "[backup] OK: ..."；
@@ -74,6 +91,11 @@ services:
     # 与 frontend/backend/db 一致：脚本若因异常（挂载不可写、sleep 参数异常等）退出，
     # 必须被拉起，否则会退化成"容器 Down、没人发现、没有备份"的原始故障形态。
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       db:
         condition: service_healthy

@@ -32,7 +32,7 @@
 |---|---|---|---|
 | 1 | 可运行源代码 | 仓库根（backend/frontend/docker/scripts） | ✅ 41+ 提交，工作区干净 |
 | 2 | Docker Compose 部署配置 | docker-compose.yml（frontend/backend/db + backup profile） | ✅ |
-| 3 | 数据库迁移脚本 | backend/alembic/versions/0001~0008（空库→head 自动执行） | ✅ |
+| 3 | 数据库迁移脚本 | backend/alembic/versions/0001~0009（空库→head 自动执行） | ✅ |
 | 4 | 环境变量示例 | .env.example | ✅ |
 | 5 | 安装部署文档 | docs/deployment.md | ✅ 本轮交付 |
 | 6 | 备份恢复和升级文档 | docs/backup-restore-upgrade.md | ✅ 本轮交付 |
@@ -47,7 +47,7 @@
 | 项 | 结果 |
 |---|---|
 | 后端全量 pytest | **69 passed**（在非 root 容器内运行；测试隔离：独立库 pt_test + 附件写临时目录） |
-| 空库迁移链 | 0001→0008 (head) 自动执行 ✓ |
+| 空库迁移链 | 0001→0009 (head) 自动执行 ✓ |
 | 干净环境部署演练 | 19s 起栈 healthy；备份→恢复 10 项目/17 任务一致；`down -v` 拆除无残留（24s 全程） |
 | E2E 抽样 | 列表页 10 项目渲染无错误；WBS/甘特/风险/交付/燃尽各页在阶段 2-5 已截验带数据界面 |
 | 镜像加固 | backend 以 uid=1000 非 root 运行（容器内 `id` 实测）；db 端口不映射宿主机 |
@@ -69,7 +69,7 @@
 5. 任务/风险对象的多态附件接口：已预留 object_type，仅对交付资料开放。
 
 ### 已知问题
-1. **WSL 实例回收竞态（环境特性）**：自动化宿主在工具调用间隙会回收 WSL 实例，期间 `localhost:8080` 可能短暂被本机其他服务占用并返回鉴权错误页；用户正常开终端使用时不复现；容器 restart: unless-stopped 自动拉起，数据无损。
+1. **WSL 实例回收竞态（环境特性）**：自动化宿主在工具调用间隙会回收 WSL 实例，期间 `localhost:8180` 可能短暂被本机其他服务占用并返回鉴权错误页；用户正常开终端使用时不复现；容器 restart: unless-stopped 自动拉起，数据无损。
 2. 镜像源偶发断连（用户侧 docker.1ms.run 等）：构建含重试已缓解。
 3. AI 中文提示词下个别内置提示仍可能回退英文（frappe-gantt 语言包覆盖不全）。
 4. 甘特图基线叠加显示未做（按规划以对比表格呈现）。
