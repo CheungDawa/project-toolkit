@@ -1,6 +1,7 @@
 import {
   ArrowRightOutlined,
   BugOutlined,
+  CalendarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   ProjectOutlined,
@@ -13,6 +14,23 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
+import type { DeliverableItem } from '../api/stage5'
+import { listDeliverables } from '../api/stage5'
+import type { Milestone } from '../api/stage2'
+import { listMilestones, listTasks } from '../api/stage2'
+
+/** 本地时区今天的 YYYY-MM-DD（避免 toISOString 的 UTC 偏移问题） */
+function localToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** 日期加 N 天，返回 YYYY-MM-DD */
+function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00`)
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 interface OverviewProject {
   id: string
@@ -62,6 +80,36 @@ interface OverviewData {
   alert_summary: { danger: number; warning: number }
 }
 
+/** 今日待办条目（跨项目聚合） */
+interface TodoItem {
+  id: string
+  name: string
+  projectId: string
+  projectLabel: string
+  /** 里程碑计划日期 / 任务计划完成日期 / 交付资料计划日期，可能为空 */
+  date: string | null
+}
+
+/** 三组待办：本周到期里程碑 / 逾期任务 / 待审核交付资料 */
+interface TodoGroups {
+  milestones: TodoItem[]
+  tasks: TodoItem[]
+  deliverables: TodoItem[]
+}
+
+/** 今日待办分组定义：标签、跳转路由（项目内）、配色与图标 */
+const TODO_GROUP_META: {
+  key: keyof TodoGroups
+  label: string
+  route: string
+  color: string
+  icon: React.ReactNode
+}[] = [
+  { key: 'milestones', label: '本周到期里程碑', route: 'milestones', color: '#d97706', icon: <ClockCircleOutlined /> },
+  { key: 'tasks', label: '逾期任务', route: 'wbs', color: '#dc2626', icon: <RiseOutlined /> },
+  { key: 'deliverables', label: '待审核交付资料', route: 'deliverables', color: '#0284c7', icon: <CheckCircleOutlined /> },
+]
+
 /** 卡片配色（浅色企业风）：图标块彩色渐变，卡片白底；警示=红/橙描边 */
 const CARD_THEME: Record<string, { grad: string; warn: boolean; iconTint: string }> = {
   projects: { grad: 'linear-gradient(135deg,#4f46e5,#7c6ff5)', warn: false, iconTint: '#4f46e5' },
@@ -89,6 +137,8 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const [data, setData] = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [todos, setTodos] = useState<TodoGroups | null>(null)
+  const [todosLoading, setTodosLoading] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -102,6 +152,68 @@ export default function DashboardPage() {
       }
     })()
   }, [])
+
+  /**
+   * 今日待办（跨项目聚合，仅用现有 API，不依赖后端改动）：
+   * - 本周到期里程碑：plan_date 在未来 7 天内且未完成（状态非已完成且无实际日期）
+   * - 逾期任务：plan_end < 今天 且状态非已完成
+   * - 待审核交付资料：review_status === '待审核'
+   * 单个项目拉取失败（Promise.allSettled / catch 空数组）不影响其余项目。
+   */
+  useEffect(() => {
+    if (!data) return
+    const projects = data.projects
+    if (projects.length === 0) {
+      setTodos({ milestones: [], tasks: [], deliverables: [] })
+      return
+    }
+    let cancelled = false
+    setTodosLoading(true)
+    void (async () => {
+      const today = localToday()
+      const in7 = addDays(today, 7)
+      const milestones: TodoItem[] = []
+      const tasks: TodoItem[] = []
+      const deliverables: TodoItem[] = []
+      await Promise.allSettled(
+        projects.map(async (p) => {
+          const label = `${p.code} ${p.name}`
+          const [ms, taskResp, dvs] = await Promise.all([
+            listMilestones(p.id).catch(() => [] as Milestone[]),
+            listTasks(p.id).catch(() => null),
+            listDeliverables(p.id).catch(() => [] as DeliverableItem[]),
+          ])
+          for (const m of ms) {
+            const done = m.status === '已完成' || !!m.actual_date
+            if (!done && m.plan_date && m.plan_date >= today && m.plan_date <= in7) {
+              milestones.push({ id: m.id, name: m.name, projectId: p.id, projectLabel: label, date: m.plan_date })
+            }
+          }
+          if (taskResp) {
+            for (const t of taskResp.items) {
+              if (t.plan_end && t.plan_end < today && t.status !== '已完成') {
+                tasks.push({ id: t.id, name: t.name, projectId: p.id, projectLabel: label, date: t.plan_end })
+              }
+            }
+          }
+          for (const d of dvs) {
+            if (d.review_status === '待审核') {
+              deliverables.push({ id: d.id, name: d.name, projectId: p.id, projectLabel: label, date: d.plan_date })
+            }
+          }
+        }),
+      )
+      if (cancelled) return
+      // 里程碑/任务按日期升序（最近的最优先）
+      milestones.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+      tasks.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+      setTodos({ milestones, tasks, deliverables })
+      setTodosLoading(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [data])
 
   /** 按完成进度计算环形图颜色 */
   const doneColor = useMemo(() => {
@@ -175,6 +287,115 @@ export default function DashboardPage() {
     const meta = ALERT_META[alert.kind]
     navigate(`/projects/${alert.project_id}${meta.route}`)
   }
+
+  /** 今日待办卡片：聚合本周到期里程碑 / 逾期任务 / 待审核交付资料，每组显示条数与前 3 条 */
+  const todoPanel = () => (
+    <div
+      style={{
+        background: '#fff',
+        borderRadius: 14,
+        border: '1px solid #eceef4',
+        boxShadow: '0 1px 4px rgba(17,20,40,.05)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          padding: '14px 18px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '1px solid #f0f2f7',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <CalendarOutlined style={{ fontSize: 15, color: '#0284c7' }} />
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#171b2e' }}>今日待办</span>
+          <span style={{ fontSize: 12, color: '#8a919e' }}>未来 7 天到期里程碑 · 逾期任务 · 待审核交付资料</span>
+        </div>
+        {data && data.totals.projects === 0 ? (
+          <span style={{ fontSize: 12, color: '#b45309' }}>暂无项目，请先在项目列表创建</span>
+        ) : null}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))' }}>
+        {TODO_GROUP_META.map((g, idx) => {
+          const items = todos ? todos[g.key] : []
+          return (
+            <div
+              key={g.key}
+              style={{
+                padding: '12px 16px 14px',
+                borderRight: idx < TODO_GROUP_META.length - 1 ? '1px solid #f5f6fa' : 'none',
+                minWidth: 0,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span
+                  style={{
+                    width: 24, height: 24, borderRadius: 7, display: 'inline-flex',
+                    alignItems: 'center', justifyContent: 'center', fontSize: 12.5,
+                    background: `linear-gradient(135deg,${g.color},${g.color}bb)`, color: '#fff',
+                  }}
+                >
+                  {g.icon}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#2c3242' }}>{g.label}</span>
+                <span
+                  style={{
+                    marginLeft: 'auto', fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 8,
+                    background: items.length > 0 ? `${g.color}14` : '#f4f6fa',
+                    color: items.length > 0 ? g.color : '#8a919e',
+                  }}
+                >
+                  {todosLoading && !todos ? '…' : `${items.length} 项`}
+                </span>
+              </div>
+              {todosLoading && !todos ? (
+                <div style={{ padding: '10px 0', textAlign: 'center', color: '#8a919e', fontSize: 12.5 }}>加载中…</div>
+              ) : items.length === 0 ? (
+                <div style={{ padding: '10px 0 4px', color: '#b3bac5', fontSize: 12.5 }}>
+                  <CheckCircleOutlined style={{ color: '#059669', marginRight: 6 }} />
+                  暂无
+                </div>
+              ) : (
+                <>
+                  {items.slice(0, 3).map((it) => (
+                    <div
+                      key={it.id}
+                      onClick={() => navigate(`/projects/${it.projectId}/${g.route}`)}
+                      title={`${it.name}（${it.projectLabel}${it.date ? ` · ${it.date}` : ''}）`}
+                      style={{
+                        padding: '5px 8px', marginBottom: 4, borderRadius: 8, background: '#f7f8fc',
+                        cursor: 'pointer', minWidth: 0,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#eef2fb')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = '#f7f8fc')}
+                    >
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: '#2c3242', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {it.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#8a919e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {it.date ? `${it.date} · ` : ''}
+                        {it.projectLabel}
+                      </div>
+                    </div>
+                  ))}
+                  {items.length > 3 ? (
+                    <a
+                      onClick={() => navigate(`/projects/${items[0].projectId}/${g.route}`)}
+                      style={{ fontSize: 11.5, color: '#7c6ff5' }}
+                    >
+                      还有 {items.length - 3} 项，点击查看 →
+                    </a>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   const alertPanel = () => {
     const alerts = data?.alerts ?? []
@@ -291,6 +512,9 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {/* ===================== 今日待办（跨项目聚合） ===================== */}
+      <div style={{ marginBottom: 14 }}>{todoPanel()}</div>
+
       {/* ===================== 统计卡区（浅色企业风） ===================== */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 12, marginBottom: 14 }}>
         {statCard({
