@@ -443,7 +443,7 @@ export default function StakeholdersPage() {
       <Button size="small" icon={<MessageOutlined />} onClick={() => void openComms(d)} />
       <Button size="small" onClick={() => openEdit(d)}>编辑</Button>
       <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(d)}>
-        <Button size="small" danger />
+        <Button size="small" danger icon={<DeleteOutlined />} title="删除干系人" />
       </Popconfirm>
     </Space>
   )

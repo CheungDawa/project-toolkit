@@ -63,6 +63,63 @@ function isExportableNode(domNode: HTMLElement): boolean {
 }
 
 /**
+ * 由 CSS 决定、克隆时会丢失的 SVG 呈现属性。
+ *
+ * 根因（已在 html-to-image 1.11.13 源码里确认）：
+ * clone-node.js::cloneChildren() 里对 SVG 根节点直接 `return clonedNode`，
+ * 即 **整个 <svg> 子树不再逐节点执行 cloneCSSStyle**，只做一次 cloneNode(true) 深拷贝。
+ * 于是依赖样式表着色的 <rect>/<path>/<text> 在克隆体里没有任何内联样式，
+ * 浏览器按 SVG 初始值 fill=black 渲染 → 导出的甘特图正文整片黑（HTML 表头/图例却正常）。
+ * 把 computed 颜色写成同名「呈现属性」后，深拷贝会把它一起带走，不依赖库的样式复制逻辑。
+ */
+const SVG_PAINT_ATTRS = [
+  'fill',
+  'fill-opacity',
+  'fill-rule',
+  'stroke',
+  'stroke-opacity',
+  'stroke-width',
+  'stroke-dasharray',
+  'stroke-dashoffset',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'dominant-baseline',
+  'text-anchor',
+  'font-size',
+  'font-weight',
+  'font-family',
+  'letter-spacing',
+]
+
+/**
+ * 修复「导出全黑」：把导出范围内每个 SVG 元素的 computed 颜色写成同名呈现属性。
+ * HTML 中的 CSS 规则优先级高于呈现属性，所以实时页面外观不变；
+ * 而克隆/序列化出来的节点拿不到样式表，只能靠这些属性着色。返回还原函数。
+ */
+function inlineSvgPaint(root: HTMLElement): () => void {
+  const nodes = Array.from(root.querySelectorAll<SVGElement>('svg, svg *'))
+  const snapshot = nodes.map((el) => ({
+    el,
+    attrs: SVG_PAINT_ATTRS.map((name) => [name, el.getAttribute(name)] as const),
+  }))
+  for (const el of nodes) {
+    const computed = window.getComputedStyle(el)
+    for (const name of SVG_PAINT_ATTRS) {
+      const value = computed.getPropertyValue(name)
+      if (value) el.setAttribute(name, value)
+    }
+  }
+  return () => {
+    for (const { el, attrs } of snapshot) {
+      for (const [name, value] of attrs) {
+        if (value === null) el.removeAttribute(name)
+        else el.setAttribute(name, value)
+      }
+    }
+  }
+}
+
+/**
  * WBS 编码比较器：'1.10' 应排在 '1.2' 之后，字符串比较会得出相反结果。
  * 逐段转数字比元组；非数字段用 1e6 兜底（与后端 app/services/wbs.py::wbs_sort_key 同口径）。
  */
@@ -305,9 +362,15 @@ export default function GanttPage() {
     setSaving(true)
     try {
       await updateTask(taskId, { plan_start: start, plan_end: end })
-      message.success(`已更新日期 ${start} ~ ${end}（已保存，甘特图不再整体刷新，可连续拖动 2–3 天）`)
+      // 本地同步（不重新拉取）：仅更新这一条，甘特图不会因整体重载而丢失滚动位置
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, plan_start: start, plan_end: end } : t)),
+      )
+      message.success(`已保存 ${start} ~ ${end}`)
     } catch (err) {
       message.error(err instanceof Error ? err.message : '日期保存失败')
+      // 失败才整体重新拉取，让拖动的条回弹到服务端真实值
+      await fetchData()
     } finally {
       setSaving(false)
     }
@@ -357,6 +420,7 @@ export default function GanttPage() {
     remember(node)
     remember(ganttView)
     remember(ganttContainer)
+    let restoreSvgPaint: (() => void) | null = null
 
     try {
       const stamp = formatStamp(new Date())
@@ -405,11 +469,16 @@ export default function GanttPage() {
         )
       }
 
+      // 兜底：把 SVG 的 fill / stroke 写成呈现属性后再截图，避免克隆丢色导致整片黑
+      restoreSvgPaint = inlineSvgPaint(node)
+
       const dataUrl = await toPng(node, {
         pixelRatio,
         backgroundColor: '#ffffff',
         width: captureWidth,
         height: captureHeight,
+        // 注意：includeStyleProperties 对 <svg> 子树无效（库会整棵跳过），
+        // 颜色只能靠 inlineSvgPaint() 写成的呈现属性，见上方注释
         filter: isExportableNode,
       })
 
@@ -424,6 +493,7 @@ export default function GanttPage() {
       message.error(`导出图片失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
       for (const item of saved) item.el.style.cssText = item.cssText
+      restoreSvgPaint?.()
       setExporting(false)
     }
   }
@@ -452,6 +522,7 @@ export default function GanttPage() {
             <Checkbox checked={showSummary} onChange={(e) => setShowSummary(e.target.checked)}>
               显示汇总条
             </Checkbox>
+            {saving ? <Tag color="processing">保存中…</Tag> : null}
             <Button onClick={() => void fetchData()} loading={loading}>
               刷新
             </Button>
@@ -464,10 +535,11 @@ export default function GanttPage() {
       >
         <Typography.Paragraph type="secondary">
           <Tag color="blue">BR-01</Tag>
-          拖动任务条修改日期 / 拖动进度条改进度，变更将经后端校验并持久化；保存后甘特图不再整体刷新，可连续拖动 2–3 天。汇总条与里程碑仅供查看。
+          拖动任务条修改日期 / 拖动进度条改进度：拖动过程中只改变画面，<b>松开鼠标后</b>
+          才一次性提交保存，因此可以连续拖 2–3 天再松手。汇总条与里程碑仅供查看。
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-          视图说明：日=逐日刻度；周=按周标注（上排月份 / 下排每周起始日）；月=逐月。导出图片建议先切到「周 / 月」视图以缩小宽度、避免超宽全黑；进入 WBS 页会拉取最新数据。
+          视图说明：日=逐日刻度；周=按周标注（上排月份 / 下排每周起始日）；月=逐月。导出图片建议先切到「周 / 月」视图，图片宽度更小、更易阅读；进入 WBS 页会拉取最新数据。
         </Typography.Paragraph>
         {ganttItems.length === 0 && !loading ? (
           <Typography.Text type="secondary">暂无已排期任务：请先在 WBS 页为任务设置计划日期。</Typography.Text>
@@ -494,7 +566,6 @@ export default function GanttPage() {
             onProgressChange={(taskId, progress) => void handleProgressChange(taskId, progress)}
             onTaskClick={handleTaskClick}
             onViewModeChange={setMode}
-            readonly={saving}
           />
 
           <GanttLegend />

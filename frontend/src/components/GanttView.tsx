@@ -40,7 +40,6 @@ interface GanttViewProps {
   onProgressChange?: (taskId: string, progress: number) => void
   onTaskClick?: (taskId: string) => void
   onViewModeChange?: (mode: GanttViewMode) => void
-  readonly?: boolean
 }
 
 function toDateString(value: Date): string {
@@ -75,11 +74,18 @@ export default function GanttView({
   onProgressChange,
   onTaskClick,
   onViewModeChange,
-  readonly = false,
 }: GanttViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   // 仅在首次挂载时自动滚动到「今日」；后续重建（切换视图/刷新数据）保留用户当前滚动位置，避免拖动后被拉回今日
   const didScrollRef = useRef(false)
+  /** 重建前记录的横向滚动位置：保存后需要重建时用它还原，避免画面跳回最左侧 */
+  const scrollLeftRef = useRef(0)
+  /**
+   * 拖动过程中的待提交变更（taskId → 新起止日期）。
+   * frappe-gantt 的 bar.js::update_bar_position 每次 pointermove 都会调用 date_changed()，
+   * 因此 date_change 事件在一次拖动里会连续触发几十次；这里只登记，等鼠标释放后一次性提交。
+   */
+  const pendingDatesRef = useRef(new Map<string, { start: string; end: string }>())
 
   /**
    * 回调放进 ref：甘特图实例只在必要依赖变化时重建，
@@ -95,6 +101,9 @@ export default function GanttView({
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
+
+    // 待提交变更表：整个实例生命周期只有这一份，取到局部变量即可（避免在清理函数里读 ref.current）
+    const pendingDates = pendingDatesRef.current
 
     const weekendSet = new Set(weekendDays.length > 0 ? weekendDays : DEFAULT_WEEKEND_DAYS)
 
@@ -114,9 +123,6 @@ export default function GanttView({
 
     new Gantt(container, ganttItems, {
       language,
-      readonly,
-      readonly_dates: readonly,
-      readonly_progress: readonly,
       snap_at: '1d',
       view_mode: viewMode,
       view_mode_select: true,
@@ -131,7 +137,11 @@ export default function GanttView({
       is_weekend: (d: Date) => weekendSet.has(d.getDay()),
       holidays: holidaysOption,
       on_date_change: (task: { id: string | number }, start: Date, end: Date) => {
-        handlersRef.current.onDateChange?.(String(task.id), toDateString(start), toDateString(end))
+        // 拖动过程中会被高频触发：先登记最新日期，mouseup 时再统一提交一次（见 flushPendingDates）
+        pendingDates.set(String(task.id), {
+          start: toDateString(start),
+          end: toDateString(end),
+        })
       },
       on_progress_change: (task: { id: string | number }, progress: number) => {
         handlersRef.current.onProgressChange?.(String(task.id), Math.round(progress))
@@ -147,13 +157,39 @@ export default function GanttView({
       },
     })
 
+    // 还原上次重建前的横向滚动位置（保存后重新渲染不要跳回最左侧）
+    const created = container.querySelector<HTMLElement>('.gantt-container')
+    if (created && didScrollRef.current) {
+      created.scrollLeft = scrollLeftRef.current
+    }
     didScrollRef.current = true
 
+    /**
+     * 鼠标释放后统一提交拖动结果（一次拖动只提交一次）。
+     * 注册在 document 冒泡阶段：frappe-gantt 自己的 mouseup 监听挂在 $svg 上，
+     * 会先把最终位置写回 task 并触发 date_change，随后才轮到这里的 document 监听。
+     */
+    const flushPendingDates = () => {
+      if (pendingDates.size === 0) return
+      const entries = Array.from(pendingDates.entries())
+      pendingDates.clear()
+      for (const [id, range] of entries) {
+        handlersRef.current.onDateChange?.(id, range.start, range.end)
+      }
+    }
+    document.addEventListener('mouseup', flushPendingDates)
+    document.addEventListener('touchend', flushPendingDates)
+
     return () => {
+      document.removeEventListener('mouseup', flushPendingDates)
+      document.removeEventListener('touchend', flushPendingDates)
+      pendingDates.clear()
+      const live = container.querySelector<HTMLElement>('.gantt-container')
+      if (live) scrollLeftRef.current = live.scrollLeft
       container.innerHTML = ''
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, language, viewMode, holidayKey, weekendKey, readonly])
+  }, [items, language, viewMode, holidayKey, weekendKey])
 
   return <div ref={containerRef} className="pt-gantt-view" />
 }
