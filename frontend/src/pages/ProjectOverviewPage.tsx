@@ -292,10 +292,11 @@ export default function ProjectOverviewPage() {
           </Row>
 
           {/* ========== 里程碑 + 风险摘要 ========== */}
-          <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+          <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 12 }}>
             <Col xs={24} lg={14}>
               <Card
                 size="small"
+                style={{ height: '100%' }}
                 title="近期里程碑"
                 extra={<a onClick={() => navigate(`/projects/${project.id}/milestones`)}>全部 →</a>}
               >
@@ -327,6 +328,7 @@ export default function ProjectOverviewPage() {
             <Col xs={24} lg={10}>
               <Card
                 size="small"
+                style={{ height: '100%' }}
                 title="风险与问题"
                 extra={<a onClick={() => navigate(`/projects/${project.id}/risks`)}>风险台账 →</a>}
               >

@@ -448,6 +448,12 @@ export default function StakeholdersPage() {
     </Space>
   )
 
+  const rowBg = (r: TableRow): string => {
+    if (r.type === 'org') return '#f0f5fa'
+    if (r.type === 'sub') return '#f6f9fc'
+    return '#ffffff'
+  }
+
   const columns: {
     title: string
     key: string
@@ -455,6 +461,7 @@ export default function StakeholdersPage() {
     width?: number
     align?: 'left' | 'center' | 'right'
     fixed?: 'right'
+    onCell?: (record: TableRow, rowIndex?: number) => { style?: CSSProperties }
     render: (_: unknown, record: TableRow) => ReactNode
   }[] = [
     {
@@ -516,6 +523,7 @@ export default function StakeholdersPage() {
     },
     {
       title: '操作', key: 'actions', width: 130, fixed: 'right' as const,
+      onCell: (r: TableRow) => ({ style: { background: rowBg(r) } }),
       render: (_, r) => {
         if (r.type !== 'person') return null
         return actionCell(r.data!)
@@ -576,7 +584,7 @@ export default function StakeholdersPage() {
       <Card size="small" style={{ marginBottom: 12, borderRadius: 10 }}>
         <Typography.Text strong style={{ fontSize: 14, color: '#123c58' }}>干系人影响力 × 关注度矩阵</Typography.Text>
         <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 10 }}>
-          着色：红=高/高（重点管理）· 橙=高/低（令其满意）· 黄=低/高（随时告知）· 灰=低/低（监督即可）；1-5 分制，≥{HIGH_THRESHOLD} 视为高
+          着色：红框=高影响+高关注（重点管理）关键干系人，点击姓名可直接编辑 · 橙=高/低（令其满意）· 黄=低/高（随时告知）· 灰=低/低（监督即可）；1-5 分制，≥{HIGH_THRESHOLD} 视为高
         </Typography.Text>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, minHeight: 120, marginTop: 8 }}>
           {QUADRANTS.map((q) => {
@@ -670,7 +678,7 @@ export default function StakeholdersPage() {
                   )
                 },
               },
-              { title: '操作', key: 'actions', width: 130, fixed: 'right' as const, render: (_: unknown, d) => actionCell(d) },
+              { title: '操作', key: 'actions', width: 130, fixed: 'right' as const, onCell: () => ({ style: { background: '#ffffff' } }), render: (_: unknown, d) => actionCell(d) },
             ]}
           />
         ) : (

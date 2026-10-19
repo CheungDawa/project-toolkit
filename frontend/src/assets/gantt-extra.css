@@ -93,6 +93,22 @@
   border: 1px solid #f0f0f0;
   border-radius: 8px;
   padding: 16px;
+  /* 导出截图时强制浅色变量：即使 html-to-image 克隆出的 DOM 漏出深色变量，条/进度/网格仍保持白底，避免导出全黑 */
+  --g-bar-color: #ffffff;
+  --g-bar-border: #ffffff;
+  --g-progress-color: #dbdbdb;
+  --g-row-color: #fdfdfd;
+  --g-row-border-color: #c7c7c7;
+  --g-border-color: #ebeff2;
+  --g-tick-color: #f3f3f3;
+  --g-tick-color-thick: #ededed;
+  --g-text-dark: #171717;
+  --g-text-muted: #7c7c7c;
+  --g-text-light: #ffffff;
+  --g-header-background: #ffffff;
+  --g-today-highlight: #ff4d4f;
+  --g-weekend-highlight-color: #f7f7f7;
+  --g-weekend-label-color: #dcdce4;
 }
 
 .pt-gantt-view {

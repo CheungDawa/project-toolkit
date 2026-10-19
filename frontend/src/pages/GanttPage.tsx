@@ -16,8 +16,8 @@ const VIEW_MODE_LABEL: Record<GanttViewMode, string> = { Day: '日', Week: '周'
 const SUMMARY_PREFIX = 'summary-'
 const MILESTONE_PREFIX = 'ms-'
 
-/** 浏览器 canvas 单边上限（Chrome 约 16384），超过会导出失败/空白 */
-const MAX_CANVAS_SIDE = 16000
+/** 导出图单边安全上限：超过浏览器 canvas 上限（约 16384）会导出失败/全黑，这里留余量 */
+const SAFE_SIDE = 12000
 
 /** 导出图片时排除的交互性元素（今日按钮/视图下拉、弹窗、调试按钮） */
 const EXCLUDED_EXPORT_CLASSES = ['side-header', 'popup-wrapper', 'adjust']
@@ -53,18 +53,6 @@ function formatFileStamp(d: Date): string {
 function sanitizeFileName(name: string): string {
   const cleaned = name.replace(/[\\/:*?"<>|]/g, '_').trim()
   return cleaned.length > 0 ? cleaned : '项目'
-}
-
-/**
- * 依据画布尺寸挑选 pixelRatio，保证 宽*ratio / 高*ratio 不超过浏览器 canvas 上限。
- * 时间轴很长时自动降采样，宁可略糊也要保证「整条时间轴都在图里」。
- */
-function pickPixelRatio(width: number, height: number): number {
-  const maxSide = Math.max(width, height)
-  if (maxSide <= 0) return 2
-  // 向下取整到 2 位小数，避免「16000/9000=1.777…」四舍五入后再次越过上限
-  const ratio = Math.floor(Math.min(2, MAX_CANVAS_SIDE / maxSide) * 100) / 100
-  return Math.max(0.5, ratio)
 }
 
 /** html-to-image 的 filter：返回 false 的节点（及其子树）不会出现在导出图中 */
@@ -312,17 +300,14 @@ export default function GanttPage() {
   const handleDateChange = async (taskId: string, start: string, end: string) => {
     if (taskId.startsWith(SUMMARY_PREFIX) || taskId.startsWith(MILESTONE_PREFIX)) {
       message.info('汇总条与里程碑不支持拖动改期：请在 WBS 页维护子任务日期，或在里程碑页维护里程碑')
-      await fetchData()
       return
     }
     setSaving(true)
     try {
       await updateTask(taskId, { plan_start: start, plan_end: end })
-      message.success(`已更新日期 ${start} ~ ${end}（经后端校验并持久化）`)
-      await fetchData()
+      message.success(`已更新日期 ${start} ~ ${end}（已保存，甘特图不再整体刷新，可连续拖动 2–3 天）`)
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '日期保存失败，甘特已回弹')
-      await fetchData()
+      message.error(err instanceof Error ? err.message : '日期保存失败')
     } finally {
       setSaving(false)
     }
@@ -331,12 +316,10 @@ export default function GanttPage() {
   const handleProgressChange = async (taskId: string, progress: number) => {
     if (taskId.startsWith(SUMMARY_PREFIX) || taskId.startsWith(MILESTONE_PREFIX)) {
       message.info('汇总条与里程碑的进度由子任务/里程碑状态推导，不支持直接拖动')
-      await fetchData()
       return
     }
     try {
       await updateTask(taskId, { progress })
-      await fetchData()
     } catch (err) {
       message.error(err instanceof Error ? err.message : '进度保存失败')
     }
@@ -381,12 +364,13 @@ export default function GanttPage() {
       // 让「生成时间」先落盘到 DOM 再截图（React 18 的批处理需要让出一次事件循环）
       await new Promise((resolve) => window.setTimeout(resolve, 60))
 
-      const fullWidth = Math.max(
+      const contentW = Math.max(
         node.scrollWidth,
         ganttView?.scrollWidth ?? 0,
         ganttContainer?.scrollWidth ?? 0,
         node.offsetWidth,
       )
+      const contentH = node.scrollHeight
       /**
        * 把元素撑到「内容宽度 + 自身左右内边距/边框 + 少量余量」：
        * 项目全局若使用 box-sizing: border-box，只写内容宽度会让右侧被裁掉几十像素。
@@ -403,24 +387,29 @@ export default function GanttPage() {
         el.style.width = `${Math.ceil(contentWidth + extra)}px`
         el.style.overflow = 'visible'
       }
-      expand(node, fullWidth)
-      expand(ganttView, fullWidth)
-      expand(ganttContainer, fullWidth)
+      expand(node, contentW)
+      expand(ganttView, contentW)
+      expand(ganttContainer, contentW)
 
-      const width = node.scrollWidth
-      const height = node.scrollHeight
-      const pixelRatio = pickPixelRatio(width, height)
-      if (width > MAX_CANVAS_SIDE) {
+      // 浏览器 canvas 单边上限约 16384px，超出会导出全黑/失败。
+      // 因此把截图尺寸限制到 SAFE_SIDE 内；超宽时间轴会截取左侧可见范围（标题区已写明完整计划区间）。
+      const captureWidth = Math.min(contentW, SAFE_SIDE)
+      const captureHeight = Math.min(contentH, SAFE_SIDE)
+      const pixelRatio = Math.max(
+        0.5,
+        Math.floor((SAFE_SIDE / Math.max(contentW, contentH)) * 100) / 100,
+      )
+      if (contentW > SAFE_SIDE || contentH > SAFE_SIDE) {
         message.warning(
-          `时间轴很宽（${width}px），已自动降低清晰度以保证完整入图；如需更清晰可切换到「周/月」视图再导出`,
+          `时间轴较宽（${Math.round(contentW)}×${Math.round(contentH)}），已自动缩小清晰度并截取可见范围以保证图片可用；如需完整导出请先切到「周/月」视图再导出`,
         )
       }
 
       const dataUrl = await toPng(node, {
         pixelRatio,
         backgroundColor: '#ffffff',
-        width,
-        height,
+        width: captureWidth,
+        height: captureHeight,
         filter: isExportableNode,
       })
 
@@ -475,7 +464,10 @@ export default function GanttPage() {
       >
         <Typography.Paragraph type="secondary">
           <Tag color="blue">BR-01</Tag>
-          拖动任务条修改日期 / 拖动进度条改进度，变更将经后端校验并持久化，WBS 页同步刷新。汇总条与里程碑仅供查看。
+          拖动任务条修改日期 / 拖动进度条改进度，变更将经后端校验并持久化；保存后甘特图不再整体刷新，可连续拖动 2–3 天。汇总条与里程碑仅供查看。
+        </Typography.Paragraph>
+        <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
+          视图说明：日=逐日刻度；周=按周标注（上排月份 / 下排每周起始日）；月=逐月。导出图片建议先切到「周 / 月」视图以缩小宽度、避免超宽全黑；进入 WBS 页会拉取最新数据。
         </Typography.Paragraph>
         {ganttItems.length === 0 && !loading ? (
           <Typography.Text type="secondary">暂无已排期任务：请先在 WBS 页为任务设置计划日期。</Typography.Text>

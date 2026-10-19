@@ -29,21 +29,19 @@ import {
   listRisks,
   updateRisk,
 } from '../api/stage3'
-import RiskMatrixChart from '../components/RiskMatrixChart'
-
 const LEVEL_COLORS: Record<string, string> = { 低: 'green', 中: 'orange', 高: 'red' }
 
 /** 已终结状态口径与后端驾驶舱一致（backend/app/api/overview.py:25 _RISK_CLOSED） */
 const CLOSED_STATUSES = ['已关闭', '已转问题', '已转任务']
 
-/** 矩阵底色：与 RiskMatrixChart 的 visualMap 保持一致（低绿 / 中黄 / 高红） */
+/** 矩阵底色：与风险矩阵网格保持一致（低绿 / 中黄 / 高红） */
 const MATRIX_BG: Record<string, string> = { 低: '#d9f7be', 中: '#fff1b8', 高: '#ffccc7' }
 
 const IMPACT_AXIS = [1, 2, 3, 4, 5]
 const PROBABILITY_AXIS = [5, 4, 3, 2, 1]
 
 /**
- * 概率 × 影响 → 等级，与 RiskMatrixChart / 后端评分口径一致。
+ * 概率 × 影响 → 等级，与后端评分口径一致。
  * score <= 4 低，<= 9 中，其余 高。
  */
 function levelOf(probability: number, impact: number): string {
@@ -358,9 +356,6 @@ export default function RisksPage() {
         </Card>
         <Card size="small" style={{ marginBottom: 12 }} title="风险矩阵（影响 × 概率）">
           <RiskMatrixOverview risks={risks} />
-        </Card>
-        <Card size="small" style={{ marginBottom: 12 }}>
-          <RiskMatrixChart risks={risks} />
         </Card>
         <Table<RiskItem>
           rowKey="id"

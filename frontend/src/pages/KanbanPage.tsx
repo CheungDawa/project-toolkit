@@ -275,7 +275,7 @@ export default function KanbanPage() {
               </div>
 
               {/* 卡片区（可滚动） */}
-              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 320px)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {loading ? <Card size="small" loading style={{ borderRadius: 8 }} /> : null}
                 {!loading && list.length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#aab', fontSize: 12, padding: '24px 0' }}>
@@ -337,8 +337,8 @@ export default function KanbanPage() {
           )
         })}
       </div>
-      <div style={{ fontSize: 12, color: '#8a9ba8', marginTop: 4 }}>
-        💡 拖动卡片改状态（失败自动回滚）· 单击卡片查看详情与调整进度 · 已完成时进度自动置 100%
+      <div style={{ fontSize: 11.5, color: '#8a9ba8', marginTop: 6, lineHeight: 1.4 }}>
+        💡 拖动卡片改状态（失败自动回滚）· 单击卡片看详情与进度 · 完成自动置 100%
       </div>
 
       {/* ===================== 任务详情抽屉 ===================== */}

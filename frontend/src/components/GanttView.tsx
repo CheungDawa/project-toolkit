@@ -78,6 +78,8 @@ export default function GanttView({
   readonly = false,
 }: GanttViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  // 仅在首次挂载时自动滚动到「今日」；后续重建（切换视图/刷新数据）保留用户当前滚动位置，避免拖动后被拉回今日
+  const didScrollRef = useRef(false)
 
   /**
    * 回调放进 ref：甘特图实例只在必要依赖变化时重建，
@@ -121,7 +123,8 @@ export default function GanttView({
       // 今日按钮：默认即 true（defaults.js:157），显式声明以免被上游配置覆盖
       today_button: true,
       // 渲染后滚动到今日（defaults.js:155），今日竖线由库自身绘制（index.js:696 highlight_current）
-      scroll_to: 'today',
+      // 仅首次挂载滚动到今日；后续重建（切换视图/刷新）保留当前位置，避免拖动后页面被拉回今日
+      scroll_to: didScrollRef.current ? undefined : 'today',
       popup_on: 'click',
       move_dependencies: true,
       // 官方 option（defaults.js:161），默认周日/周六；这里允许按项目日历覆盖
@@ -143,6 +146,8 @@ export default function GanttView({
         }
       },
     })
+
+    didScrollRef.current = true
 
     return () => {
       container.innerHTML = ''

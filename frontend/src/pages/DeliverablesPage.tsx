@@ -340,11 +340,12 @@ export default function DeliverablesPage() {
             {
               title: '操作',
               key: 'actions',
-              width: 190,
+              width: 180,
+              fixed: 'right',
               render: (_: unknown, r) => (
-                <Space size="small" wrap>
+                <Space size={4} wrap={false}>
                   <Upload showUploadList={false} beforeUpload={(file) => handleUpload(r, file)}>
-                    <Button size="small" type="link">上传附件</Button>
+                    <Button size="small" type="link">上传</Button>
                   </Upload>
                   <Button size="small" onClick={() => openEdit(r)}>编辑</Button>
                   <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(r)}>

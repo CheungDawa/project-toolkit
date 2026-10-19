@@ -7,6 +7,7 @@ import {
   ImportOutlined,
   LinkOutlined,
   PlusOutlined,
+  RightOutlined,
   UpOutlined,
 } from '@ant-design/icons'
 import {
@@ -29,7 +30,7 @@ import {
 import type { TableProps } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Key } from 'react'
+import type { Key, MouseEvent as ReactMouseEvent } from 'react'
 import { useParams } from 'react-router-dom'
 
 import type { DependencyItem, ImportIssue, TaskImportResult, TaskItem, TaskPayload } from '../api/stage2'
@@ -54,6 +55,28 @@ import TaskFormModal from '../components/TaskFormModal'
 const importTemplateUrl = (projectId: string) => `/api/projects/${projectId}/tasks/import-template`
 
 /** 批量修改可选的任务状态 */
+const wbsExpandIcon = ({
+  expanded,
+  record,
+  onExpand,
+}: {
+  expanded: boolean
+  record: TaskNode
+  onExpand: (record: TaskNode, e: ReactMouseEvent<HTMLElement>) => void
+}) => {
+  const hasChildren = !!(record && record.children && record.children.length > 0)
+  if (!hasChildren) return <span style={{ display: 'inline-block', width: 17 }} />
+  return (
+    <Button
+      type="text"
+      size="small"
+      icon={expanded ? <DownOutlined /> : <RightOutlined />}
+      onClick={(e) => onExpand(record, e)}
+      style={{ width: 22, height: 22, padding: 0, marginRight: 2 }}
+    />
+  )
+}
+
 const TASK_STATUS_OPTIONS = ['未开始', '进行中', '已完成', '已暂停', '已取消']
 
 interface TaskNode extends TaskItem {
@@ -626,7 +649,7 @@ export default function WbsPage() {
           columns={columns}
           dataSource={tree}
           pagination={false}
-          defaultExpandAllRows
+          expandable={{ defaultExpandAllRows: true, expandIcon: wbsExpandIcon }}
           scroll={{ x: 1250 }}
           size="small"
           rowSelection={{
