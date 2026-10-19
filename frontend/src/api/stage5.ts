@@ -42,6 +42,18 @@ export interface DeliverableItem {
 }
 
 export const captureSnapshot = (projectId: string) => api.post<SnapshotItem>(`/projects/${projectId}/snapshots`, {})
+export interface AttachmentItem {
+  id: string
+  file_name: string
+  size_bytes: number
+  mime_type: string | null
+  uploaded_at: string
+}
+
+export interface ProjectAttachmentItem extends AttachmentItem {
+  deliverable_id: string
+}
+
 export const listSnapshots = (projectId: string) => api.get<SnapshotItem[]>(`/projects/${projectId}/snapshots`)
 export const burndown = (projectId: string) => api.get<BurndownResponse>(`/projects/${projectId}/burndown`)
 
@@ -57,7 +69,10 @@ export const updateDeliverable = (id: string, payload: Record<string, unknown>) 
   api.patch<DeliverableItem>(`/deliverables/${id}`, payload)
 export const deleteDeliverable = (id: string) => api.delete(`/deliverables/${id}`)
 export const listAttachments = (deliverableId: string) =>
-  api.get<{ id: string; file_name: string; size_bytes: number; mime_type: string | null; uploaded_at: string }[]>(`/deliverables/${deliverableId}/attachments`)
+  api.get<AttachmentItem[]>(`/deliverables/${deliverableId}/attachments`)
+/** 按项目一次性拉取全部交付资料附件（列表页展示「附件(n)」徽标，避免逐行请求） */
+export const listProjectAttachments = (projectId: string) =>
+  api.get<{ attachments: ProjectAttachmentItem[] }>(`/projects/${projectId}/deliverables/attachments`)
 export const uploadAttachment = async (deliverableId: string, file: File) => {
   const form = new FormData()
   form.append('file', file)
@@ -66,6 +81,10 @@ export const uploadAttachment = async (deliverableId: string, file: File) => {
   if (!resp.ok) throw new Error(body?.error?.message ?? `上传失败（${resp.status}）`)
   return body
 }
+/** 附件下载/预览地址：inline=true 时后端返回 Content-Disposition: inline（PDF/图片可浏览器直接预览） */
+export const attachmentDownloadUrl = (id: string, inline = false) =>
+  `/api/attachments/${id}/download${inline ? '?inline=1' : ''}`
+export const deleteAttachment = (id: string) => api.delete(`/attachments/${id}`)
 export const deliverableExportUrl = (projectId: string) => `/api/projects/${projectId}/deliverables/export`
 export const importDeliverables = async (projectId: string, file: File) => {
   const form = new FormData()

@@ -1,5 +1,7 @@
 import {
+  DeleteOutlined,
   DownloadOutlined,
+  EyeOutlined,
   PlusOutlined,
   UploadOutlined,
 } from '@ant-design/icons'
@@ -15,19 +17,25 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
+  Typography,
   Upload,
 } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
-import type { DeliverableItem } from '../api/stage5'
+import type { AttachmentItem, DeliverableItem } from '../api/stage5'
 import {
+  attachmentDownloadUrl,
   createDeliverable,
+  deleteAttachment,
   deleteDeliverable,
   deliverableExportUrl,
   importDeliverables,
   instantiateTemplate,
+  listAttachments,
   listDeliverables,
+  listProjectAttachments,
   listTemplates,
   updateDeliverable,
   uploadAttachment,
@@ -36,6 +44,21 @@ import {
 const CATEGORIES = ['设备到货', '安装调试', '测试', '培训', '试运行', '验收', '运维移交']
 const SUBMIT_STATUS = ['未提交', '已提交', '已归档']
 const REVIEW_STATUS = ['待审核', '已通过', '已驳回']
+/** 可用浏览器原生能力预览的类型（后端对 inline 也做同样的白名单校验） */
+const PREVIEWABLE_EXT = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp']
+const OFFICE_PREVIEW_TIP = 'Office 文件请先下载后用 WPS/Office 打开（自托管环境不支持在线转换）'
+
+const isPreviewable = (fileName: string): boolean =>
+  PREVIEWABLE_EXT.includes((fileName.split('.').pop() ?? '').toLowerCase())
+
+const formatBytes = (bytes: number): string => {
+  if (!bytes) return '-'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+const formatTime = (value: string): string => value.slice(0, 19).replace('T', ' ')
 
 export default function DeliverablesPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -43,6 +66,8 @@ export default function DeliverablesPage() {
 
   const [items, setItems] = useState<DeliverableItem[]>([])
   const [templates, setTemplates] = useState<{ name: string }[]>([])
+  /** 交付资料 id -> 附件列表（进入页面时按项目拉一次） */
+  const [attachments, setAttachments] = useState<Record<string, AttachmentItem[]>>({})
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<DeliverableItem | null>(null)
@@ -55,12 +80,23 @@ export default function DeliverablesPage() {
     try {
       setItems(await listDeliverables(projectId, { category: categoryFilter }))
       setTemplates((await listTemplates()).templates)
+      const grouped: Record<string, AttachmentItem[]> = {}
+      for (const item of (await listProjectAttachments(projectId)).attachments) {
+        grouped[item.deliverable_id] = [...(grouped[item.deliverable_id] ?? []), item]
+      }
+      setAttachments(grouped)
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载交付资料失败')
     } finally {
       setLoading(false)
     }
   }, [projectId, categoryFilter, message])
+
+  /** 单个交付资料的附件刷新（上传/删除后调用） */
+  const refreshAttachments = useCallback(async (deliverableId: string) => {
+    const rows = await listAttachments(deliverableId)
+    setAttachments((prev) => ({ ...prev, [deliverableId]: rows }))
+  }, [])
 
   useEffect(() => {
     void fetchData()
@@ -128,11 +164,96 @@ export default function DeliverablesPage() {
   const handleUpload = async (item: DeliverableItem, file: File) => {
     try {
       await uploadAttachment(item.id, file)
+      await refreshAttachments(item.id)
       message.success(`已上传 ${file.name}`)
     } catch (err) {
       message.error(err instanceof Error ? err.message : '上传失败')
     }
     return false
+  }
+
+  const handleDeleteAttachment = async (deliverableId: string, attachmentId: string) => {
+    try {
+      await deleteAttachment(attachmentId)
+      await refreshAttachments(deliverableId)
+      message.success('附件已删除')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '删除附件失败')
+    }
+  }
+
+  /** 展开行：附件清单（文件名/大小/下载/预览/删除/继续上传） */
+  const renderAttachments = (item: DeliverableItem) => {
+    const rows = attachments[item.id] ?? []
+    return (
+      <div style={{ padding: '4px 8px 8px' }}>
+        <Space wrap style={{ marginBottom: 8 }}>
+          <Upload showUploadList={false} beforeUpload={(file) => handleUpload(item, file)}>
+            <Button size="small" icon={<UploadOutlined />}>上传附件</Button>
+          </Upload>
+          <Typography.Text type="secondary">
+            单个附件不超过 50MB；PDF 与图片可直接预览，Office 文件请下载后本地打开
+          </Typography.Text>
+        </Space>
+        <Table<AttachmentItem>
+          rowKey="id"
+          size="small"
+          dataSource={rows}
+          pagination={false}
+          locale={{ emptyText: '暂无附件，点击上方「上传附件」添加' }}
+          columns={[
+            {
+              title: '文件名',
+              dataIndex: 'file_name',
+              render: (v: string) => (
+                <Tooltip title={v}>
+                  <Typography.Text style={{ maxWidth: 420 }} ellipsis>{v}</Typography.Text>
+                </Tooltip>
+              ),
+            },
+            { title: '大小', dataIndex: 'size_bytes', width: 90, render: (v: number) => formatBytes(v) },
+            { title: '上传时间', dataIndex: 'uploaded_at', width: 160, render: (v: string) => formatTime(v) },
+            {
+              title: '操作',
+              key: 'actions',
+              width: 210,
+              render: (_: unknown, a: AttachmentItem) => (
+                <Space size={0}>
+                  <Button
+                    size="small"
+                    type="link"
+                    icon={<DownloadOutlined />}
+                    onClick={() => window.open(attachmentDownloadUrl(a.id))}
+                  >
+                    下载
+                  </Button>
+                  {isPreviewable(a.file_name) ? (
+                    <Button
+                      size="small"
+                      type="link"
+                      icon={<EyeOutlined />}
+                      onClick={() => window.open(attachmentDownloadUrl(a.id, true))}
+                    >
+                      预览
+                    </Button>
+                  ) : (
+                    <Tooltip title={OFFICE_PREVIEW_TIP}>
+                      {/* 禁用按钮不触发鼠标事件，外套 span 保证提示可悬浮 */}
+                      <span>
+                        <Button size="small" type="link" disabled icon={<EyeOutlined />}>预览</Button>
+                      </span>
+                    </Tooltip>
+                  )}
+                  <Popconfirm title="确认删除该附件？" onConfirm={() => void handleDeleteAttachment(item.id, a.id)}>
+                    <Button size="small" type="link" danger icon={<DeleteOutlined />}>删除</Button>
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </div>
+    )
   }
 
   const handleImport = async (file: File) => {
@@ -188,6 +309,7 @@ export default function DeliverablesPage() {
           dataSource={items}
           pagination={false}
           scroll={{ x: 1000 }}
+          expandable={{ expandedRowRender: renderAttachments }}
           columns={[
             { title: '类别', dataIndex: 'category', width: 100, render: (v: string | null) => (v ? <Tag>{v}</Tag> : '-') },
             { title: '资料名称', dataIndex: 'name', width: 200 },
@@ -206,6 +328,15 @@ export default function DeliverablesPage() {
               render: (v: string) => <Tag color={v === '已通过' ? 'green' : v === '已驳回' ? 'red' : 'default'}>{v}</Tag>,
             },
             { title: '备注', dataIndex: 'note', render: (v: string | null) => v ?? '-' },
+            {
+              title: '附件',
+              key: 'attachment_count',
+              width: 90,
+              render: (_: unknown, r) => {
+                const count = (attachments[r.id] ?? []).length
+                return <Tag color={count ? 'blue' : 'default'}>附件 {count}</Tag>
+              },
+            },
             {
               title: '操作',
               key: 'actions',
