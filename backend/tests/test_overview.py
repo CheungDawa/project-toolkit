@@ -201,3 +201,89 @@ def test_overview_alerts_isolated_across_projects(client):
     assert (row_a["overdue_tasks"], row_a["overdue_milestones"]) == (1, 0)
     assert (row_b["overdue_tasks"], row_b["overdue_milestones"]) == (0, 0)
     assert all(a["project_id"] == pa for a in data["alerts"])
+
+
+# ---------- GET /api/overview/todos（P0-2 待办聚合接口） ----------
+
+
+def _todos(client) -> dict:
+    resp = client.get("/api/overview/todos")
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _assert_today_iso(value: str) -> None:
+    """后端「今天」取北京时间，测试进程可能是 UTC，允许 ±1 天偏差但必须是合法 ISO 日期。"""
+    assert isinstance(value, str)
+    assert abs((date.fromisoformat(value) - TODAY).days) <= 1
+
+
+def test_overview_todos_empty_database(client):
+    """空库：三组待办都返回空数组（不是 null），today 为今天。"""
+    data = _todos(client)
+    _assert_today_iso(data["today"])
+    assert data["milestones"] == []
+    assert data["tasks"] == []
+    assert data["deliverables"] == []
+
+
+def test_overview_todos_aggregates_pending_items(client):
+    """逾期任务 / 未来 7 天里程碑 / 待审核交付物 分别命中，对照组不进列表。"""
+    pid = _create_project(client, code="OV-TODO")
+    # 命中：逾期未完成任务（date = plan_end）
+    overdue_task = client.post(
+        f"/api/projects/{pid}/tasks",
+        json={"name": "逾期任务", "plan_end": AGO(3), "status": "进行中"},
+    ).json()
+    # 对照：未到期任务不进列表
+    client.post(f"/api/projects/{pid}/tasks", json={"name": "未来任务", "plan_end": AHEAD(10)})
+    # 对照：已完成任务即使超期也不进列表
+    client.post(
+        f"/api/projects/{pid}/tasks",
+        json={"name": "超期但已完成", "plan_end": AGO(5), "status": "已完成", "progress": 100},
+    )
+    # 命中：未来 3 天内的未完成里程碑（date = plan_date）
+    soon_milestone = client.post(
+        f"/api/projects/{pid}/milestones",
+        json={"name": "初验里程碑", "plan_date": AHEAD(3)},
+    ).json()
+    # 对照：超出 7 天窗口
+    client.post(
+        f"/api/projects/{pid}/milestones",
+        json={"name": "远期里程碑", "plan_date": AHEAD(10)},
+    )
+    # 对照：计划日期在窗口内但已实际完成
+    client.post(
+        f"/api/projects/{pid}/milestones",
+        json={"name": "已完成里程碑", "plan_date": AHEAD(2), "actual_date": AHEAD(1)},
+    )
+    # 命中：待审核交付物（date = plan_date）
+    deliverable = client.post(
+        f"/api/projects/{pid}/deliverables",
+        json={
+            "name": "初验报告",
+            "plan_date": AHEAD(5),
+            "submit_status": "已提交",
+            "review_status": "待审核",
+        },
+    ).json()
+    # 对照：已通过审核的交付物不进列表
+    client.post(
+        f"/api/projects/{pid}/deliverables",
+        json={"name": "终验报告", "submit_status": "已提交", "review_status": "已通过"},
+    )
+
+    data = _todos(client)
+    _assert_today_iso(data["today"])
+
+    assert [t["id"] for t in data["tasks"]] == [overdue_task["id"]]
+    assert data["tasks"][0]["date"] == AGO(3)
+    assert data["tasks"][0]["name"] == "逾期任务"
+    assert data["tasks"][0]["project_id"] == pid
+    assert data["tasks"][0]["project_label"] == "OV-TODO 预警测试项目"
+
+    assert [m["id"] for m in data["milestones"]] == [soon_milestone["id"]]
+    assert data["milestones"][0]["date"] == AHEAD(3)
+
+    assert [d["id"] for d in data["deliverables"]] == [deliverable["id"]]
+    assert data["deliverables"][0]["date"] == AHEAD(5)

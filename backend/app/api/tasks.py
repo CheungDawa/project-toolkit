@@ -21,6 +21,7 @@ from app.models.project import Project
 from app.models.task import Task, TaskDependency
 from app.schemas.task import (
     DependencyRead,
+    TaskBulkUpdate,
     TaskCreate,
     TaskListResponse,
     TaskRead,
@@ -159,6 +160,99 @@ def update_task(task_id: UUID, payload: TaskUpdate, db: Session = Depends(get_db
     db.refresh(task)
     snapshot_service.maybe_capture_daily(db, task.project_id)
     return _to_read(task, _get_effective_map(db, task.project_id))
+
+
+@router.patch("/projects/{project_id}/tasks/bulk")
+def bulk_update_tasks(
+    project_id: UUID, payload: TaskBulkUpdate, db: Session = Depends(get_db)
+) -> dict:
+    """批量更新 WBS 任务（P1-4：一次事务、一次快照、一条汇总审计）。
+
+    语义与单条 PATCH /tasks/{id} 保持一致：只写请求里**显式给出**的字段
+    （progress / status / owner），未给出的字段保持原值。日期字段不在本接口
+    范围内，因此不做工期重算（不触发工作日历查询），避免 500 条任务时的隐性放大。
+
+    事务边界：全部 setattr 后只 commit 一次 —— 要么整批成功，要么整批回滚；
+    不会出现「前 200 条已改、后 300 条失败」的半成品状态。
+
+    容错：个别 id 不存在 / 不属于该项目 / 已被软删除时**不整单失败**，而是收集到
+    not_found 一并返回；重复 id 对 updated 与 not_found 均只计一次，not_found 按
+    首次出现顺序返回。updated == 0 时仍返回 200（空结果），不抛错 —— 前端并发
+    编辑场景下「都被别人删了」属于正常收敛。
+
+    返回：{"updated": int, "not_found": ["uuid", ...]}
+    """
+    items = payload.items
+    requested_ids = [item.id for item in items]
+
+    tasks = list(
+        db.scalars(
+            select(Task).where(
+                Task.id.in_(requested_ids),
+                Task.project_id == project_id,
+                Task.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    task_by_id: dict[UUID, Task] = {task.id: task for task in tasks}
+
+    not_found_ids: list[UUID] = []
+    seen_missing: set[UUID] = set()
+    touched: dict[UUID, Task] = {}
+    for item in items:
+        task = task_by_id.get(item.id)
+        if task is None:
+            # 去重且保持首次出现顺序：请求里重复的未知 id 只报一次
+            if item.id not in seen_missing:
+                seen_missing.add(item.id)
+                not_found_ids.append(item.id)
+            continue
+        # exclude_unset：区分「显式传 null」与「压根没传」，只写前者到达的字段
+        data = item.model_dump(exclude_unset=True, exclude={"id"})
+        for key, value in data.items():
+            setattr(task, key, value)
+        touched[task.id] = task
+
+    updated = len(touched)
+    not_found = [str(task_id) for task_id in not_found_ids]
+    if updated == 0:
+        return {"updated": 0, "not_found": not_found}
+
+    # 唯一的业务事务边界：上面所有 setattr 在此一次性落库，要么全成功要么全回滚
+    try:
+        db.commit()
+    except IntegrityError as exc:  # pragma: no cover - 入参已由 schema 约束，保留兜底
+        db.rollback()
+        logger.exception("批量更新任务提交失败，已整批回滚")
+        raise AppError(
+            422, "integrity_error",
+            f"数据约束冲突：批量更新未生效（{_integrity_hint(exc)}）",
+        ) from None
+
+    first_task_id = next(iter(touched))
+    _capture_snapshot_safely(db, project_id)
+    try:
+        audit_service.record(
+            db, project_id, "task", first_task_id, "bulk_update",
+            f"批量更新 {updated} 项任务",
+            payload_diff={
+                "updated": updated,
+                "not_found": not_found[:20],
+                "fields": sorted({
+                    key
+                    for item in items
+                    for key in item.model_dump(exclude_unset=True, exclude={"id"})
+                }),
+            },
+        )
+        # 有意为之的第二次提交（不是事务泄漏）：任务数据已在上面提交完毕，审计是
+        # best-effort 的独立写入 —— 失败只记日志、不回滚业务数据、也不向用户报错。
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("批量更新任务后写入审计日志失败（任务数据已提交，不影响更新结果）")
+        _safe_rollback(db)
+
+    return {"updated": updated, "not_found": not_found}
 
 
 @router.delete("/tasks/{task_id}", status_code=204)

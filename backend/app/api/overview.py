@@ -7,13 +7,24 @@
 - 待验收交付物 已提交待审核；以及 plan_date 已过仍未提交
 - 需协调事项   开放问题（待处理/处理中）中：严重度=高 或 已逾期；责任人为空的标注
 排序：danger 优先于 warning，同级按逾期天数降序。
+
+性能口径（P1-6）：所有跨项目统计都在进入项目循环**之前**一次性按 project_id 预聚合
+（overdue_tasks_by_project / overdue_ms_by_project / risk_cnt_by_project /
+high_risk_cnt_by_project / issue_cnt_by_project），项目行循环内只做字典查表，
+整体复杂度 O(N + P) 而非 O(P × N)。预聚合是唯一数据源，项目行标记与「异常项目」
+预警共用同一份逾期任务桶，避免两处口径漂移。
+
+同文件还提供 GET /api/overview/todos：驾驶舱待办聚合接口，一次返回全部项目的
+里程碑（今天起 7 天内）、逾期任务、待审核交付物，替代前端逐项目 3N 次请求；
+口径与前端原逐项目拉取后的过滤逻辑完全一致（未删除、未归档项目；任务未删除；
+交付物无归档字段故不过滤），按 date 升序，交付物 plan_date 为空的排最后。
 """
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -28,12 +39,26 @@ router = APIRouter(prefix="/api", tags=["overview"])
 
 _RISK_CLOSED = ["已关闭", "已转问题", "已转任务"]
 _ISSUE_CLOSED = "已关闭"
+_TASK_DONE = "已完成"
+_MILESTONE_DONE = "已完成"
+
+# 驾驶舱「即将到期里程碑」窗口：今天起 7 天内（闭区间 [today, today+7]）
+_MILESTONE_WINDOW_DAYS = 7
 
 
 def _days_over(target: date | None, today: date) -> int:
     if target is None:
         return 0
     return (today - target).days
+
+
+def _sort_by_date(rows: list[dict]) -> list[dict]:
+    """按 date（ISO 字符串）升序；date 为 None 的排最后，同日期保持稳定序。
+
+    注意：None **排最后是有意的产品口径**（交付物 plan_date 允许为空，无日期的
+    条目视为「不限期待办」，放末尾而不是排最前），不要改成排最前。
+    """
+    return sorted(rows, key=lambda row: (row["date"] is None, row["date"] or ""))
 
 
 @router.get("/overview")
@@ -90,25 +115,43 @@ def overview(db: Session = Depends(get_db)) -> dict:
     for task in tasks:
         tasks_by_project[task.project_id].append(task)
 
+    # ---------- 一次性预聚合（P1-6：把 O(P×N) 的全表扫描收敛为 O(N) 单遍） ----------
+    # 逾期任务：未完成 且 有计划结束日 且 已过计划结束日。
+    # 这份桶同时是「项目行 overdue_tasks」与「异常项目预警」的唯一数据源。
+    overdue_tasks_by_project: dict[UUID, list[Task]] = defaultdict(list)
+    for task in tasks:
+        if task.status != _TASK_DONE and task.plan_end is not None and task.plan_end < today:
+            overdue_tasks_by_project[task.project_id].append(task)
+
+    # 逾期里程碑：有计划日期 且 已过期 且 尚未实际完成
+    # 同时保留一份「按查询顺序」的扁平列表，供预警生成使用 —— 与重构前的遍历顺序
+    # 完全一致，确保 alerts 的稳定排序不受分组影响；条件只在下面写一次。
+    overdue_ms_flat: list[Milestone] = []
+    overdue_ms_by_project: dict[UUID, list[Milestone]] = defaultdict(list)
+    for milestone in milestones:
+        if (
+            milestone.plan_date is not None
+            and milestone.plan_date < today
+            and milestone.actual_date is None
+        ):
+            overdue_ms_flat.append(milestone)
+            overdue_ms_by_project[milestone.project_id].append(milestone)
+
+    # 开放风险计数 / 高风险计数
+    risk_cnt_by_project: dict[UUID, int] = defaultdict(int)
+    high_risk_cnt_by_project: dict[UUID, int] = defaultdict(int)
+    for risk in risks_open:
+        risk_cnt_by_project[risk.project_id] += 1
+        if risk.level == "高":
+            high_risk_cnt_by_project[risk.project_id] += 1
+
+    # 开放问题计数
+    issue_cnt_by_project: dict[UUID, int] = defaultdict(int)
+    for issue in issues_open:
+        issue_cnt_by_project[issue.project_id] += 1
+
     def metrics_of(pid) -> dict:
         return project_metrics(tasks_by_project.get(pid, []))
-
-    def overdue_tasks_of(pid):
-        return [
-            t
-            for t in tasks
-            if t.project_id == pid
-            and t.status != "已完成"
-            and t.plan_end is not None
-            and t.plan_end < today
-        ]
-
-    def overdue_milestones_of(pid):
-        return [
-            m
-            for m in milestones
-            if m.project_id == pid and m.plan_date is not None and m.plan_date < today and m.actual_date is None
-        ]
 
     def proj_label(pid) -> str:
         p = proj_by_id.get(pid)
@@ -117,9 +160,6 @@ def overview(db: Session = Depends(get_db)) -> dict:
     # ---------- 项目行（现有字段 + 异常标记） ----------
     project_rows = []
     for p in projects:
-        od_tasks = overdue_tasks_of(p.id)
-        od_miles = overdue_milestones_of(p.id)
-        high_risk_cnt = sum(1 for r in risks_open if r.project_id == p.id and r.level == "高")
         metrics = metrics_of(p.id)
         project_rows.append(
             {
@@ -132,11 +172,11 @@ def overview(db: Session = Depends(get_db)) -> dict:
                 "task_total": metrics["total_tasks"],
                 "task_done": metrics["completed_tasks"],
                 "progress": metrics["progress"],
-                "risk_open": sum(1 for r in risks_open if r.project_id == p.id),
-                "issue_open": sum(1 for i in issues_open if i.project_id == p.id),
-                "high_risk": high_risk_cnt,
-                "overdue_tasks": len(od_tasks),
-                "overdue_milestones": len(od_miles),
+                "risk_open": risk_cnt_by_project.get(p.id, 0),
+                "issue_open": issue_cnt_by_project.get(p.id, 0),
+                "high_risk": high_risk_cnt_by_project.get(p.id, 0),
+                "overdue_tasks": len(overdue_tasks_by_project.get(p.id, [])),
+                "overdue_milestones": len(overdue_ms_by_project.get(p.id, [])),
             }
         )
 
@@ -165,11 +205,7 @@ def overview(db: Session = Depends(get_db)) -> dict:
         alerts.append(alert)
 
     # 1) 异常项目：逾期任务最多的项目汇总为一条（含严重度）
-    by_pid_overdue: dict = {}
-    for t in tasks:
-        if t.status != "已完成" and t.plan_end is not None and t.plan_end < today:
-            by_pid_overdue.setdefault(t.project_id, []).append(t)
-    for pid, od in by_pid_overdue.items():
+    for pid, od in overdue_tasks_by_project.items():
         worst = max(od, key=lambda t: _days_over(t.plan_end, today))
         add(
             "project",
@@ -182,18 +218,17 @@ def overview(db: Session = Depends(get_db)) -> dict:
         )
 
     # 2) 逾期里程碑
-    for m in milestones:
-        if m.plan_date is not None and m.plan_date < today and m.actual_date is None:
-            d = _days_over(m.plan_date, today)
-            add(
-                "milestone",
-                "danger" if d >= 7 else "warning",
-                d,
-                m.project_id,
-                f"里程碑逾期：{m.name}",
-                f"计划 {m.plan_date.isoformat()}，已逾期 {d} 天尚未完成",
-                milestone_id=str(m.id),
-            )
+    for m in overdue_ms_flat:
+        d = _days_over(m.plan_date, today)
+        add(
+            "milestone",
+            "danger" if d >= 7 else "warning",
+            d,
+            m.project_id,
+            f"里程碑逾期：{m.name}",
+            f"计划 {m.plan_date.isoformat()}，已逾期 {d} 天尚未完成",
+            milestone_id=str(m.id),
+        )
 
     # 3) 高优风险（level=高，按 score 降序在前端分组呈现，此处不聚合）
     for r in risks_open:
@@ -264,7 +299,7 @@ def overview(db: Session = Depends(get_db)) -> dict:
         "totals": {
             "projects": len(projects),
             "tasks": len(tasks),
-            "tasks_done": sum(1 for t in tasks if t.status == "已完成"),
+            "tasks_done": sum(1 for t in tasks if t.status == _TASK_DONE),
             "tasks_doing": sum(1 for t in tasks if t.status == "进行中"),
             "risks_open": len(risks_open),
             "high_risks": sum(1 for r in risks_open if r.level == "高"),
@@ -276,4 +311,112 @@ def overview(db: Session = Depends(get_db)) -> dict:
             "danger": sum(1 for a in alerts if a["severity"] == "danger"),
             "warning": sum(1 for a in alerts if a["severity"] == "warning"),
         },
+    }
+
+
+@router.get("/overview/todos")
+def overview_todos(db: Session = Depends(get_db)) -> dict:
+    """驾驶舱待办聚合：一次请求返回全量里程碑 / 逾期任务 / 待审核交付物。
+
+    背景（P0-2）：前端驾驶舱原先对每个项目并发请求里程碑、任务、交付物三个接口，
+    N 个项目就是 3N 次请求；本接口用 1 次 Project 查询 + 3 次 IN 查询完成聚合，
+    请求数从 O(N) 降为 O(1)。
+
+    口径（与前端逐项目拉取后的过滤逻辑严格对齐，不新增语义）：
+    - 项目范围：未删除（deleted_at 为空）且未归档（archived_at 为空）；
+    - milestones：未完成（status != "已完成" 且 actual_date 为空），
+      且 plan_date 落在 [今天, 今天 + 7 天] 闭区间；date = plan_date；
+    - tasks：未完成（status != "已完成"）且 plan_end < 今天；date = plan_end；
+      仅统计未删除（deleted_at 为空）任务；
+    - deliverables：review_status == "待审核"；date = plan_date（可为 null，排最后）；
+      交付物表无归档/软删除字段，故不加 archived 过滤；
+    - 三组均按 date 升序（None 排最后），project_label = "{code} {name}"。
+
+    返回：{"today": "YYYY-MM-DD", "milestones": [], "tasks": [], "deliverables": []}
+    空数据一律返回空数组，不返回 null。
+    """
+    today = today_local()
+    projects = list(
+        db.scalars(
+            select(Project).where(Project.deleted_at.is_(None), Project.archived_at.is_(None))
+        ).all()
+    )
+    project_ids = [p.id for p in projects]
+    if not project_ids:
+        return {"today": today.isoformat(), "milestones": [], "tasks": [], "deliverables": []}
+
+    proj_by_id = {p.id: p for p in projects}
+    window_end = today + timedelta(days=_MILESTONE_WINDOW_DAYS)
+
+    def proj_label(pid: UUID) -> str:
+        p = proj_by_id.get(pid)
+        return f"{p.code} {p.name}" if p else "未知项目"
+
+    milestone_rows = db.scalars(
+        select(Milestone).where(
+            Milestone.project_id.in_(project_ids),
+            Milestone.plan_date.is_not(None),
+            Milestone.plan_date >= today,
+            Milestone.plan_date <= window_end,
+            Milestone.actual_date.is_(None),
+            # status 可空：NULL 视为「未完成」（与前端 JS 的 !== "已完成" 语义一致）
+            or_(Milestone.status.is_(None), Milestone.status != _MILESTONE_DONE),
+        )
+    ).all()
+
+    task_rows = db.scalars(
+        select(Task).where(
+            Task.project_id.in_(project_ids),
+            Task.deleted_at.is_(None),
+            Task.plan_end.is_not(None),
+            Task.plan_end < today,
+            Task.status != _TASK_DONE,
+        )
+    ).all()
+
+    deliverable_rows = db.scalars(
+        select(Deliverable).where(
+            Deliverable.project_id.in_(project_ids),
+            Deliverable.review_status == "待审核",
+        )
+    ).all()
+
+    milestones = _sort_by_date([
+        {
+            "id": str(m.id),
+            "name": m.name,
+            "project_id": str(m.project_id),
+            "project_label": proj_label(m.project_id),
+            "date": m.plan_date.isoformat() if m.plan_date else None,
+        }
+        for m in milestone_rows
+    ])
+
+    tasks = _sort_by_date([
+        {
+            "id": str(t.id),
+            "name": t.name,
+            "project_id": str(t.project_id),
+            "project_label": proj_label(t.project_id),
+            "date": t.plan_end.isoformat() if t.plan_end else None,
+        }
+        for t in task_rows
+    ])
+
+    deliverables = _sort_by_date([
+        {
+            "id": str(d.id),
+            "name": d.name,
+            "project_id": str(d.project_id),
+            "project_label": proj_label(d.project_id),
+            "date": d.plan_date.isoformat() if d.plan_date else None,
+        }
+        for d in deliverable_rows
+    ])
+
+    return {
+        "today": today.isoformat(),
+        "milestones": milestones,
+        "tasks": tasks,
+        "deliverables": deliverables,
     }

@@ -44,6 +44,21 @@ class TaskUpdate(BaseModel):
     deliverable_name: str | None = None
 
 
+class TaskBulkItem(BaseModel):
+    """WBS 批量编辑的单行变更（只提交需要改的字段，未提交的字段保持原值）。"""
+
+    id: UUID
+    progress: int | None = Field(default=None, ge=0, le=100)
+    status: str | None = Field(default=None, max_length=30)
+    owner: str | None = Field(default=None, max_length=100)
+
+
+class TaskBulkUpdate(BaseModel):
+    """批量更新请求体：1~500 条，一次事务提交（P1-4）。"""
+
+    items: list[TaskBulkItem] = Field(min_length=1, max_length=500)
+
+
 class TaskRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
