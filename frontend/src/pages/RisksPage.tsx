@@ -206,23 +206,26 @@ export default function RisksPage() {
     setModalOpen(true)
   }
 
-  const openEdit = useCallback((risk: RiskItem) => {
-    setEditing(risk)
-    form.setFieldsValue({
-      category: risk.category,
-      description: risk.description,
-      probability: risk.probability,
-      impact: risk.impact,
-      owner: risk.owner,
-      trigger_condition: risk.trigger_condition,
-      prevention: risk.prevention,
-      contingency: risk.contingency,
-      strategy: risk.strategy,
-      residual_level: risk.residual_level,
-      status: risk.status,
-    })
-    setModalOpen(true)
-  }, [form])
+  const openEdit = useCallback(
+    (risk: RiskItem) => {
+      setEditing(risk)
+      form.setFieldsValue({
+        category: risk.category,
+        description: risk.description,
+        probability: risk.probability,
+        impact: risk.impact,
+        owner: risk.owner,
+        trigger_condition: risk.trigger_condition,
+        prevention: risk.prevention,
+        contingency: risk.contingency,
+        strategy: risk.strategy,
+        residual_level: risk.residual_level,
+        status: risk.status,
+      })
+      setModalOpen(true)
+    },
+    [form],
+  )
 
   const handleOk = async () => {
     if (!projectId) return
@@ -243,21 +246,27 @@ export default function RisksPage() {
     }
   }
 
-  const handleArchive = useCallback(async (risk: RiskItem) => {
-    try {
-      await archiveRisk(risk.id)
-      message.success('风险已归档')
-      await fetchData()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '归档失败')
-    }
-  }, [fetchData, message])
+  const handleArchive = useCallback(
+    async (risk: RiskItem) => {
+      try {
+        await archiveRisk(risk.id)
+        message.success('风险已归档')
+        await fetchData()
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '归档失败')
+      }
+    },
+    [fetchData, message],
+  )
 
-  const openAssessments = useCallback(async (risk: RiskItem) => {
-    setAssessmentOpen(risk)
-    assessForm.setFieldsValue({ probability: risk.probability, impact: risk.impact, basis: '' })
-    setHistory(await listAssessments(risk.id))
-  }, [assessForm])
+  const openAssessments = useCallback(
+    async (risk: RiskItem) => {
+      setAssessmentOpen(risk)
+      assessForm.setFieldsValue({ probability: risk.probability, impact: risk.impact, basis: '' })
+      setHistory(await listAssessments(risk.id))
+    },
+    [assessForm],
+  )
 
   const handleAddAssessment = async () => {
     if (!assessmentOpen) return
@@ -274,14 +283,17 @@ export default function RisksPage() {
   }
 
   /** 打开转化弹窗：默认任务名取风险描述、负责人取风险责任人 */
-  const openConvert = useCallback((risk: RiskItem, target: 'issue' | 'task') => {
-    setConvertOpen(risk)
-    convertForm.setFieldsValue({
-      target,
-      task_name: risk.description.slice(0, 50),
-      task_owner: risk.owner ?? '',
-    })
-  }, [convertForm])
+  const openConvert = useCallback(
+    (risk: RiskItem, target: 'issue' | 'task') => {
+      setConvertOpen(risk)
+      convertForm.setFieldsValue({
+        target,
+        task_name: risk.description.slice(0, 50),
+        task_owner: risk.owner ?? '',
+      })
+    },
+    [convertForm],
+  )
 
   const handleConvert = async () => {
     if (!convertOpen) return

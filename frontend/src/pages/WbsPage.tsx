@@ -93,7 +93,7 @@ const wbsExpandIcon = ({
       type="text"
       size="small"
       icon={expanded ? <DownOutlined /> : <RightOutlined />}
-      onClick={(e) => onExpand(record, e)}
+      onClick={e => onExpand(record, e)}
       style={{ width: 22, height: 22, padding: 0, marginRight: 2 }}
     />
   )
@@ -141,11 +141,10 @@ function chunkArray<T>(items: readonly T[], size: number): T[][] {
 
 /** 等待指定毫秒（仅用于让进度条走完 100% 的视觉过渡） */
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     setTimeout(resolve, ms)
   })
 }
-
 
 /** 导入结果弹窗里的问题列表：最多展示 20 条，超出可滚动 */
 function ImportIssueList({
@@ -163,7 +162,9 @@ function ImportIssueList({
       <Typography.Text strong style={{ color }}>
         {title}
       </Typography.Text>
-      <ul style={{ maxHeight: 200, overflow: 'auto', paddingLeft: 18, marginTop: 4, marginBottom: 0 }}>
+      <ul
+        style={{ maxHeight: 200, overflow: 'auto', paddingLeft: 18, marginTop: 4, marginBottom: 0 }}
+      >
         {issues.slice(0, 20).map((issue, index) => (
           <li key={index}>
             第 {issue.row} 行：{issue.message}
@@ -171,7 +172,9 @@ function ImportIssueList({
         ))}
       </ul>
       {issues.length > 20 ? (
-        <Typography.Text type="secondary">（共 {issues.length} 条，仅显示前 20 条）</Typography.Text>
+        <Typography.Text type="secondary">
+          （共 {issues.length} 条，仅显示前 20 条）
+        </Typography.Text>
       ) : null}
     </div>
   )
@@ -265,7 +268,7 @@ export default function WbsPage() {
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
-    return tasks.filter((t) => {
+    return tasks.filter(t => {
       if (statusFilter && t.status !== statusFilter) return false
       if (!kw) return true
       return (
@@ -288,7 +291,8 @@ export default function WbsPage() {
       const kids = childrenMap.get(task.id)
       if (!kids || kids.length === 0) continue
       const range = ranges.get(task.id)
-      if (range && range.start && range.end) map.set(task.id, { start: range.start, end: range.end })
+      if (range && range.start && range.end)
+        map.set(task.id, { start: range.start, end: range.end })
     }
     return map
   }, [tasks])
@@ -300,7 +304,7 @@ export default function WbsPage() {
    */
   const reportBulkResult = useCallback(
     (updated: number, notFound: string[], total: number) => {
-      const codeById = new Map(tasks.map((task) => [task.id, task.wbs_code]))
+      const codeById = new Map(tasks.map(task => [task.id, task.wbs_code]))
       const describe = (id: string): string => codeById.get(id) ?? id
 
       if (notFound.length === 0) {
@@ -314,14 +318,16 @@ export default function WbsPage() {
 
       const preview = notFound.slice(0, 10).map(describe)
       Modal.warning({
-        title: updated === 0 ? '没有任务被更新' : `已更新 ${updated} 条，${notFound.length} 条未更新`,
+        title:
+          updated === 0 ? '没有任务被更新' : `已更新 ${updated} 条，${notFound.length} 条未更新`,
         content: (
           <div>
             <Typography.Text type="secondary">
-              共提交 {total} 条；以下 {notFound.length} 条未更新（可能已被他人删除或不属于当前项目）：
+              共提交 {total} 条；以下 {notFound.length}{' '}
+              条未更新（可能已被他人删除或不属于当前项目）：
             </Typography.Text>
             <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-              {preview.map((code) => (
+              {preview.map(code => (
                 <li key={code}>{code}</li>
               ))}
             </ul>
@@ -360,7 +366,7 @@ export default function WbsPage() {
           })
           const result = await bulkUpdateTasks(
             projectId,
-            chunk.map((id) => ({ id, ...patch })),
+            chunk.map(id => ({ id, ...patch })),
           )
           updated += result.updated
           const missing = result.not_found ?? []
@@ -421,7 +427,9 @@ export default function WbsPage() {
       if (failed === 0) {
         message.success(`批量修改完成：成功 ${success} 条`)
       } else {
-        message.warning(`批量修改完成：成功 ${success} 条，失败 ${failed} 条（后端校验未通过的任务已跳过）`)
+        message.warning(
+          `批量修改完成：成功 ${success} 条，失败 ${failed} 条（后端校验未通过的任务已跳过）`,
+        )
       }
       await fetchData()
     },
@@ -429,13 +437,14 @@ export default function WbsPage() {
   )
 
   const handleBatchSubmit = async () => {
-    const ids = selectedKeys.map((key) => String(key))
+    const ids = selectedKeys.map(key => String(key))
 
     // 批量接口能表达的字段
     const bulkPatch: TaskBulkPatch = {}
     if (batchUse.status && batchValue.status) bulkPatch.status = batchValue.status
     if (batchUse.owner) bulkPatch.owner = batchValue.owner ?? null
-    if (batchUse.progress && typeof batchValue.progress === 'number') bulkPatch.progress = batchValue.progress
+    if (batchUse.progress && typeof batchValue.progress === 'number')
+      bulkPatch.progress = batchValue.progress
 
     // 只能走单条接口的字段（日期变更会触发工期重算）
     const datePatch: Partial<TaskPayload> = {}
@@ -461,9 +470,13 @@ export default function WbsPage() {
 
   const handleRecalcParentDates = async () => {
     const targets = tasks
-      .map((task) => ({ task, range: summaryRange.get(task.id) }))
-      .filter((item): item is { task: TaskItem; range: { start: string; end: string } } => Boolean(item.range))
-      .filter((item) => item.task.plan_start !== item.range.start || item.task.plan_end !== item.range.end)
+      .map(task => ({ task, range: summaryRange.get(task.id) }))
+      .filter((item): item is { task: TaskItem; range: { start: string; end: string } } =>
+        Boolean(item.range),
+      )
+      .filter(
+        item => item.task.plan_start !== item.range.start || item.task.plan_end !== item.range.end,
+      )
 
     if (targets.length === 0) {
       message.info('所有父任务的计划起止已与子任务区间一致，无需重算')
@@ -489,7 +502,7 @@ export default function WbsPage() {
   }
 
   const confirmRecalc = () => {
-    const count = tasks.filter((task) => {
+    const count = tasks.filter(task => {
       const range = summaryRange.get(task.id)
       return range && (task.plan_start !== range.start || task.plan_end !== range.end)
     }).length
@@ -557,13 +570,17 @@ export default function WbsPage() {
     async (task: TaskItem, direction: -1 | 1) => {
       if (!projectId) return
       const siblings = tasks
-        .filter((t) => t.parent_id === task.parent_id)
+        .filter(t => t.parent_id === task.parent_id)
         .sort((a, b) => a.sort_order - b.sort_order)
-      const index = siblings.findIndex((t) => t.id === task.id)
+      const index = siblings.findIndex(t => t.id === task.id)
       const target = index + direction
       if (target < 0 || target >= siblings.length) return
       try {
-        await reorderTask(projectId, { task_id: task.id, new_parent_id: task.parent_id, new_index: target })
+        await reorderTask(projectId, {
+          task_id: task.id,
+          new_parent_id: task.parent_id,
+          new_index: target,
+        })
         await fetchData()
       } catch (err) {
         message.error(err instanceof Error ? err.message : '排序失败')
@@ -612,7 +629,11 @@ export default function WbsPage() {
             <div>
               <ImportIssueList title="失败明细" issues={errors} color="#cf1322" />
               {/* 不致命但用户必须知道：父编码找不到按顶级导入、字段超长已截断等 */}
-              <ImportIssueList title={`另有 ${warnings.length} 条提示`} issues={warnings} color="#d46b08" />
+              <ImportIssueList
+                title={`另有 ${warnings.length} 条提示`}
+                issues={warnings}
+                color="#d46b08"
+              />
             </div>
           ),
         })
@@ -689,7 +710,9 @@ export default function WbsPage() {
         title: '状态',
         dataIndex: 'status',
         width: 100,
-        render: (v: string) => <Tag color={v === '已完成' ? 'green' : v === '进行中' ? 'blue' : 'default'}>{v}</Tag>,
+        render: (v: string) => (
+          <Tag color={v === '已完成' ? 'green' : v === '进行中' ? 'blue' : 'default'}>{v}</Tag>
+        ),
       },
       { title: '负责人', dataIndex: 'owner', width: 100, render: (v: string | null) => v ?? '-' },
       {
@@ -713,7 +736,12 @@ export default function WbsPage() {
           )
         },
       },
-      { title: '工期(天)', dataIndex: 'duration_days', width: 90, render: (v: number | null) => v ?? '-' },
+      {
+        title: '工期(天)',
+        dataIndex: 'duration_days',
+        width: 90,
+        render: (v: number | null) => v ?? '-',
+      },
       { title: '工时', dataIndex: 'work_hours', width: 80, render: (v: number | null) => v ?? '-' },
       {
         title: '进度',
@@ -753,9 +781,24 @@ export default function WbsPage() {
             >
               编辑
             </Button>
-            <Button size="small" type="link" icon={<CopyOutlined />} onClick={() => void handleCopy(r)} />
-            <Button size="small" type="link" icon={<UpOutlined />} onClick={() => void handleMove(r, -1)} />
-            <Button size="small" type="link" icon={<DownOutlined />} onClick={() => void handleMove(r, 1)} />
+            <Button
+              size="small"
+              type="link"
+              icon={<CopyOutlined />}
+              onClick={() => void handleCopy(r)}
+            />
+            <Button
+              size="small"
+              type="link"
+              icon={<UpOutlined />}
+              onClick={() => void handleMove(r, -1)}
+            />
+            <Button
+              size="small"
+              type="link"
+              icon={<DownOutlined />}
+              onClick={() => void handleMove(r, 1)}
+            />
             <Popconfirm
               title={`删除任务 ${r.wbs_code}？`}
               description="将连同其全部子任务一起删除（软删除）"
@@ -789,29 +832,39 @@ export default function WbsPage() {
               placeholder="状态筛选"
               allowClear
               style={{ width: 120 }}
-              options={TASK_STATUS_OPTIONS.map((v) => ({ value: v, label: v }))}
+              options={TASK_STATUS_OPTIONS.map(v => ({ value: v, label: v }))}
               onChange={setStatusFilter}
             />
             <Button
               icon={<PlusOutlined />}
               type="primary"
-              onClick={() => { setEditing(null); setEditingParent(null); setModalOpen(true) }}
+              onClick={() => {
+                setEditing(null)
+                setEditingParent(null)
+                setModalOpen(true)
+              }}
             >
               新建顶级任务
             </Button>
             <Button icon={<LinkOutlined />} onClick={() => setDepModalOpen(true)}>
               依赖
             </Button>
-            <Button icon={<ExportOutlined />} onClick={() => window.open(exportTasksUrl(projectId!))}>
+            <Button
+              icon={<ExportOutlined />}
+              onClick={() => window.open(exportTasksUrl(projectId!))}
+            >
               导出
             </Button>
-            <Button icon={<DownloadOutlined />} onClick={() => window.open(importTemplateUrl(projectId!))}>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => window.open(importTemplateUrl(projectId!))}
+            >
               下载模板
             </Button>
             <Button icon={<CopyOutlined />} onClick={() => void openCloneModal()}>
               从其他项目复制
             </Button>
-            <Upload accept=".xlsx" showUploadList={false} beforeUpload={(file) => handleImport(file)}>
+            <Upload accept=".xlsx" showUploadList={false} beforeUpload={file => handleImport(file)}>
               <Button icon={<ImportOutlined />}>导入</Button>
             </Upload>
             <Button onClick={confirmRecalc}>按子任务重算父任务日期</Button>
@@ -839,7 +892,7 @@ export default function WbsPage() {
           size="small"
           rowSelection={{
             selectedRowKeys: selectedKeys,
-            onChange: (keys) => setSelectedKeys(keys),
+            onChange: keys => setSelectedKeys(keys),
           }}
         />
       </Card>
@@ -848,7 +901,11 @@ export default function WbsPage() {
         open={modalOpen}
         task={editing}
         parent={editingParent}
-        onCancel={() => { setModalOpen(false); setEditing(null); setEditingParent(null) }}
+        onCancel={() => {
+          setModalOpen(false)
+          setEditing(null)
+          setEditingParent(null)
+        }}
         onSubmit={handleSubmit}
       />
 
@@ -880,10 +937,10 @@ export default function WbsPage() {
             value={cloneSourceId}
             onChange={setCloneSourceId}
             options={projects
-              .filter((p) => p.id !== projectId)
-              .map((p) => ({ value: p.id, label: `${p.code} ${p.name}` }))}
+              .filter(p => p.id !== projectId)
+              .map(p => ({ value: p.id, label: `${p.code} ${p.name}` }))}
           />
-          <Checkbox checked={cloneWithDates} onChange={(e) => setCloneWithDates(e.target.checked)}>
+          <Checkbox checked={cloneWithDates} onChange={e => setCloneWithDates(e.target.checked)}>
             同时复制计划日期
           </Checkbox>
         </Space>
@@ -915,7 +972,7 @@ export default function WbsPage() {
           <Space>
             <Checkbox
               checked={batchUse.status}
-              onChange={(e) => setBatchUse({ ...batchUse, status: e.target.checked })}
+              onChange={e => setBatchUse({ ...batchUse, status: e.target.checked })}
             >
               状态
             </Checkbox>
@@ -925,15 +982,15 @@ export default function WbsPage() {
               disabled={!batchUse.status}
               allowClear
               value={batchValue.status}
-              onChange={(v) => setBatchValue({ ...batchValue, status: v })}
-              options={TASK_STATUS_OPTIONS.map((v) => ({ value: v, label: v }))}
+              onChange={v => setBatchValue({ ...batchValue, status: v })}
+              options={TASK_STATUS_OPTIONS.map(v => ({ value: v, label: v }))}
             />
           </Space>
 
           <Space>
             <Checkbox
               checked={batchUse.owner}
-              onChange={(e) => setBatchUse({ ...batchUse, owner: e.target.checked })}
+              onChange={e => setBatchUse({ ...batchUse, owner: e.target.checked })}
             >
               负责人
             </Checkbox>
@@ -942,14 +999,14 @@ export default function WbsPage() {
               style={{ width: 220 }}
               disabled={!batchUse.owner}
               value={batchValue.owner ?? ''}
-              onChange={(e) => setBatchValue({ ...batchValue, owner: e.target.value })}
+              onChange={e => setBatchValue({ ...batchValue, owner: e.target.value })}
             />
           </Space>
 
           <Space>
             <Checkbox
               checked={batchUse.plan_start}
-              onChange={(e) => setBatchUse({ ...batchUse, plan_start: e.target.checked })}
+              onChange={e => setBatchUse({ ...batchUse, plan_start: e.target.checked })}
             >
               计划开始
             </Checkbox>
@@ -957,14 +1014,16 @@ export default function WbsPage() {
               style={{ width: 180 }}
               disabled={!batchUse.plan_start}
               value={batchValue.plan_start ? dayjs(batchValue.plan_start) : null}
-              onChange={(d) => setBatchValue({ ...batchValue, plan_start: d ? d.format('YYYY-MM-DD') : undefined })}
+              onChange={d =>
+                setBatchValue({ ...batchValue, plan_start: d ? d.format('YYYY-MM-DD') : undefined })
+              }
             />
           </Space>
 
           <Space>
             <Checkbox
               checked={batchUse.plan_end}
-              onChange={(e) => setBatchUse({ ...batchUse, plan_end: e.target.checked })}
+              onChange={e => setBatchUse({ ...batchUse, plan_end: e.target.checked })}
             >
               计划结束
             </Checkbox>
@@ -972,14 +1031,16 @@ export default function WbsPage() {
               style={{ width: 180 }}
               disabled={!batchUse.plan_end}
               value={batchValue.plan_end ? dayjs(batchValue.plan_end) : null}
-              onChange={(d) => setBatchValue({ ...batchValue, plan_end: d ? d.format('YYYY-MM-DD') : undefined })}
+              onChange={d =>
+                setBatchValue({ ...batchValue, plan_end: d ? d.format('YYYY-MM-DD') : undefined })
+              }
             />
           </Space>
 
           <Space>
             <Checkbox
               checked={batchUse.progress}
-              onChange={(e) => setBatchUse({ ...batchUse, progress: e.target.checked })}
+              onChange={e => setBatchUse({ ...batchUse, progress: e.target.checked })}
             >
               进度
             </Checkbox>
@@ -991,7 +1052,9 @@ export default function WbsPage() {
               disabled={!batchUse.progress}
               addonAfter="%"
               value={batchValue.progress}
-              onChange={(v) => setBatchValue({ ...batchValue, progress: typeof v === 'number' ? v : undefined })}
+              onChange={v =>
+                setBatchValue({ ...batchValue, progress: typeof v === 'number' ? v : undefined })
+              }
             />
           </Space>
         </Space>
@@ -1022,7 +1085,7 @@ export default function WbsPage() {
             optionFilterProp="label"
             value={depPred}
             onChange={setDepPred}
-            options={tasks.map((t) => ({ value: t.id, label: `${t.wbs_code} ${t.name}` }))}
+            options={tasks.map(t => ({ value: t.id, label: `${t.wbs_code} ${t.name}` }))}
           />
           <span>→</span>
           <Select
@@ -1032,9 +1095,13 @@ export default function WbsPage() {
             optionFilterProp="label"
             value={depSucc}
             onChange={setDepSucc}
-            options={tasks.map((t) => ({ value: t.id, label: `${t.wbs_code} ${t.name}` }))}
+            options={tasks.map(t => ({ value: t.id, label: `${t.wbs_code} ${t.name}` }))}
           />
-          <Button type="primary" onClick={() => void handleAddDep()} disabled={!depPred || !depSucc}>
+          <Button
+            type="primary"
+            onClick={() => void handleAddDep()}
+            disabled={!depPred || !depSucc}
+          >
             添加
           </Button>
         </Space>
@@ -1048,8 +1115,8 @@ export default function WbsPage() {
               title: '依赖',
               key: 'pair',
               render: (_: unknown, d) => {
-                const pred = tasks.find((t) => t.id === d.predecessor_id)
-                const succ = tasks.find((t) => t.id === d.successor_id)
+                const pred = tasks.find(t => t.id === d.predecessor_id)
+                const succ = tasks.find(t => t.id === d.successor_id)
                 return `${pred ? `${pred.wbs_code} ${pred.name}` : '?'} → ${succ ? `${succ.wbs_code} ${succ.name}` : '?'}`
               },
             },

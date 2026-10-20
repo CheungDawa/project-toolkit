@@ -51,15 +51,19 @@ function useProjectIdFromPath(): string | null {
   return params.id ?? null
 }
 
-function pageTitle(pathname: string, projectId: string | null): { title: string; subtitle?: string } {
+function pageTitle(
+  pathname: string,
+  projectId: string | null,
+): { title: string; subtitle?: string } {
   if (pathname === '/dashboard') return { title: '驾驶舱', subtitle: '全局总览' }
-  if (pathname === '/projects' || pathname === '/') return { title: '项目列表', subtitle: '全部项目' }
+  if (pathname === '/projects' || pathname === '/')
+    return { title: '项目列表', subtitle: '全部项目' }
   if (pathname === '/settings') return { title: '系统设置' }
   if (projectId) {
     const suffix = pathname.split(`/projects/${projectId}`)[1]?.replace(/^\//, '')
     if (!suffix) return { title: '项目概览' }
     if (suffix === 'detail') return { title: '项目档案' }
-    const module = PROJECT_MODULES.find((m) => m.path === suffix)
+    const module = PROJECT_MODULES.find(m => m.path === suffix)
     return { title: module?.label ?? '项目', subtitle: '项目空间' }
   }
   return { title: 'Project Toolkit' }
@@ -116,7 +120,7 @@ export default function AppLayout() {
   const currentProject = projectContext.project
 
   const activeModule = projectId
-    ? PROJECT_MODULES.find((m) => m.path === activeModuleKey) ?? null
+    ? (PROJECT_MODULES.find(m => m.path === activeModuleKey) ?? null)
     : null
 
   // 面包屑：项目列表 / 项目名 / 模块名（逐级可点，面包屑本身即项目归属提示）
@@ -133,7 +137,9 @@ export default function AppLayout() {
       },
     ]
     if (activeModule) {
-      items.push({ title: <span style={{ color: '#4f46e5', fontWeight: 600 }}>{activeModule.label}</span> })
+      items.push({
+        title: <span style={{ color: '#4f46e5', fontWeight: 600 }}>{activeModule.label}</span>,
+      })
     } else {
       items.push({ title: <span style={{ color: '#4f46e5', fontWeight: 600 }}>项目概览</span> })
     }
@@ -154,13 +160,13 @@ export default function AppLayout() {
   }, [projectId])
 
   const menuItems = useMemo(() => {
-    const projectNodes = projects.map((p) => ({
+    const projectNodes = projects.map(p => ({
       key: `proj:${p.id}`,
       icon: <ProjectOutlined />,
       label: p.name,
       children: [
         { key: `pmod:${p.id}:overview`, icon: <ProjectOutlined />, label: '项目概览' },
-        ...PROJECT_MODULES.map((m) => ({
+        ...PROJECT_MODULES.map(m => ({
           key: `pmod:${p.id}:${m.key}`,
           icon: m.icon,
           label: m.label,
@@ -192,7 +198,7 @@ export default function AppLayout() {
       : ['projects-root']
 
   const switchProject = (newId: string) => {
-    const suffix = projectId ? location.pathname.split(`/projects/${projectId}`)[1] ?? '' : ''
+    const suffix = projectId ? (location.pathname.split(`/projects/${projectId}`)[1] ?? '') : ''
     navigate(`/projects/${newId}${suffix}`)
   }
 
@@ -237,14 +243,22 @@ export default function AppLayout() {
           <ApartmentOutlined />
           {!collapsed && <span>Project Toolkit</span>}
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: collapsed ? '2px 0 8px' : '4px 4px 8px', minHeight: 0 }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            padding: collapsed ? '2px 0 8px' : '4px 4px 8px',
+            minHeight: 0,
+          }}
+        >
           <Menu
             theme="dark"
             mode="inline"
             inlineCollapsed={collapsed}
             selectedKeys={selectedKeys}
             openKeys={collapsed ? undefined : openKeys}
-            onOpenChange={(keys) => setOpenKeys(keys as string[])}
+            onOpenChange={keys => setOpenKeys(keys as string[])}
             onClick={({ key }) => {
               if (key === '/dashboard' || key === '/projects') {
                 navigate(key)
@@ -253,7 +267,7 @@ export default function AppLayout() {
                 if (moduleKey === 'overview') {
                   navigate(`/projects/${pid}`)
                 } else {
-                  const module = PROJECT_MODULES.find((m) => m.key === moduleKey)
+                  const module = PROJECT_MODULES.find(m => m.key === moduleKey)
                   if (module) navigate(`/projects/${pid}/${module.path}`)
                 }
               }
@@ -293,7 +307,7 @@ export default function AppLayout() {
               type="text"
               aria-label={collapsed ? '展开侧边栏' : '折叠侧边栏'}
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed((c) => !c)}
+              onClick={() => setCollapsed(c => !c)}
               style={{ flexShrink: 0 }}
             />
             {projectId ? (
@@ -302,7 +316,9 @@ export default function AppLayout() {
               <>
                 <span
                   style={{
-                    width: 6, height: 22, borderRadius: 3,
+                    width: 6,
+                    height: 22,
+                    borderRadius: 3,
                     background: 'linear-gradient(180deg, #4f46e5, #6d67f5)',
                     display: 'inline-block',
                     flexShrink: 0,
@@ -312,7 +328,9 @@ export default function AppLayout() {
                   {title}
                 </Typography.Title>
                 {subtitle ? (
-                  <Tag color="geekblue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>{subtitle}</Tag>
+                  <Tag color="geekblue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                    {subtitle}
+                  </Tag>
                 ) : null}
               </>
             )}
@@ -328,7 +346,7 @@ export default function AppLayout() {
               style={{ width: 280, flexShrink: 0, textAlign: 'left' }}
               popupMatchSelectWidth={false}
               notFoundContent={<span style={{ fontSize: 12, color: '#8a919e' }}>暂无项目</span>}
-              options={projects.map((p) => ({
+              options={projects.map(p => ({
                 value: p.id,
                 label: `${p.code} · ${p.name}`,
               }))}

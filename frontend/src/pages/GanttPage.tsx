@@ -1,4 +1,15 @@
-import { App, Button, Card, Checkbox, DatePicker, Segmented, Space, Tag, Tooltip, Typography } from 'antd'
+import {
+  App,
+  Button,
+  Card,
+  Checkbox,
+  DatePicker,
+  Segmented,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd'
 import { toPng } from 'html-to-image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
@@ -66,7 +77,7 @@ function sanitizeFileName(name: string): string {
 function isExportableNode(domNode: HTMLElement): boolean {
   const classList = domNode?.classList
   if (!classList || typeof classList.contains !== 'function') return true
-  return !EXCLUDED_EXPORT_CLASSES.some((cls) => classList.contains(cls))
+  return !EXCLUDED_EXPORT_CLASSES.some(cls => classList.contains(cls))
 }
 
 /**
@@ -110,9 +121,9 @@ const SVG_PAINT_ATTRS = [
  */
 function inlineSvgPaint(root: HTMLElement): () => void {
   const nodes = Array.from(root.querySelectorAll<SVGElement>('svg, svg *'))
-  const snapshot = nodes.map((el) => ({
+  const snapshot = nodes.map(el => ({
     el,
-    attrs: SVG_PAINT_ATTRS.map((name) => [name, el.getAttribute(name)] as const),
+    attrs: SVG_PAINT_ATTRS.map(name => [name, el.getAttribute(name)] as const),
   }))
   for (const el of nodes) {
     const computed = window.getComputedStyle(el)
@@ -243,7 +254,7 @@ function GanttLegend() {
         color: '#595959',
       }}
     >
-      {LEGEND.map((item) => (
+      {LEGEND.map(item => (
         <span key={item.text} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <span
             style={{
@@ -352,10 +363,16 @@ export default function GanttPage() {
   }, [projectId])
 
   /** 传给甘特图的条目 + 计划区间（用于导出图标题） */
-  const { items: ganttItems, rangeStart, rangeEnd } = useMemo(() => {
+  const {
+    items: ganttItems,
+    rangeStart,
+    rangeEnd,
+  } = useMemo(() => {
     const childrenMap = buildChildrenMap(tasks)
     const sortNodes = (list: TaskItem[]) =>
-      list.slice().sort((a, b) => a.sort_order - b.sort_order || compareWbsCode(a.wbs_code, b.wbs_code))
+      list
+        .slice()
+        .sort((a, b) => a.sort_order - b.sort_order || compareWbsCode(a.wbs_code, b.wbs_code))
 
     const toItem = (task: TaskItem): GanttItemInput => ({
       id: task.id,
@@ -364,7 +381,7 @@ export default function GanttPage() {
       end: task.plan_end as string,
       progress: Math.round(task.effective_progress ?? task.progress ?? 0),
       status: task.status,
-      dependencies: deps.filter((d) => d.successor_id === task.id).map((d) => d.predecessor_id),
+      dependencies: deps.filter(d => d.successor_id === task.id).map(d => d.predecessor_id),
     })
 
     const result: GanttItemInput[] = []
@@ -432,15 +449,17 @@ export default function GanttPage() {
 
   const handleDateChange = async (taskId: string, start: string, end: string) => {
     if (taskId.startsWith(SUMMARY_PREFIX) || taskId.startsWith(MILESTONE_PREFIX)) {
-      message.info('汇总条与里程碑不支持拖动改期：请在 WBS 页维护子任务日期，或在里程碑页维护里程碑')
+      message.info(
+        '汇总条与里程碑不支持拖动改期：请在 WBS 页维护子任务日期，或在里程碑页维护里程碑',
+      )
       return
     }
     setSaving(true)
     try {
       await updateTask(taskId, { plan_start: start, plan_end: end })
       // 本地同步（不重新拉取）：仅更新这一条，甘特图不会因整体重载而丢失滚动位置
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, plan_start: start, plan_end: end } : t)),
+      setTasks(prev =>
+        prev.map(t => (t.id === taskId ? { ...t, plan_start: start, plan_end: end } : t)),
       )
       message.success(`已保存 ${start} ~ ${end}`)
     } catch (err) {
@@ -471,11 +490,9 @@ export default function GanttPage() {
       const nextProgress = typeof updated?.progress === 'number' ? updated.progress : progress
       const nextEffective =
         typeof updated?.effective_progress === 'number' ? updated.effective_progress : nextProgress
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? { ...t, progress: nextProgress, effective_progress: nextEffective }
-            : t,
+      setTasks(prev =>
+        prev.map(t =>
+          t.id === taskId ? { ...t, progress: nextProgress, effective_progress: nextEffective } : t,
         ),
       )
     } catch (err) {
@@ -485,7 +502,7 @@ export default function GanttPage() {
 
   const handleTaskClick = (taskId: string) => {
     if (taskId.startsWith(MILESTONE_PREFIX)) {
-      const milestone = milestones.find((m) => `${MILESTONE_PREFIX}${m.id}` === taskId)
+      const milestone = milestones.find(m => `${MILESTONE_PREFIX}${m.id}` === taskId)
       message.info(`里程碑：${milestone?.name ?? ''}（${milestone?.plan_date ?? '未排期'}）`)
       return
     }
@@ -547,12 +564,12 @@ export default function GanttPage() {
       flushSync(() => {
         setGeneratedAt(stamp)
       })
-      const twoFrames = new Promise<void>((resolve) => {
+      const twoFrames = new Promise<void>(resolve => {
         window.requestAnimationFrame(() => {
           window.requestAnimationFrame(() => resolve())
         })
       })
-      const framesTimeout = new Promise<void>((resolve) => {
+      const framesTimeout = new Promise<void>(resolve => {
         window.setTimeout(resolve, 300)
       })
       await Promise.race([twoFrames, framesTimeout])
@@ -613,10 +630,7 @@ export default function GanttPage() {
         const maxOffsetX = Math.max(0, ganttContentW - metrics.columnWidth)
         const offsetX = Math.min(Math.max(0, startX), maxOffsetX)
         const desiredWidth = Math.max(metrics.columnWidth, endX - startX)
-        const availableWidth = Math.max(
-          metrics.columnWidth,
-          ganttContentW - Math.max(0, startX),
-        )
+        const availableWidth = Math.max(metrics.columnWidth, ganttContentW - Math.max(0, startX))
         const rangeWidth = Math.min(desiredWidth, availableWidth)
         if (endX <= 0 || startX >= ganttContentW) {
           message.warning('所选导出区间超出当前渲染的时间范围，已按可见部分导出')
@@ -708,7 +722,7 @@ export default function GanttPage() {
   }
 
   const rangeText = rangeStart && rangeEnd ? `${rangeStart} ~ ${rangeEnd}` : '暂无已排期任务'
-  const leafCount = tasks.filter((t) => t.plan_start && t.plan_end).length
+  const leafCount = tasks.filter(t => t.plan_start && t.plan_end).length
 
   return (
     <div>
@@ -721,20 +735,20 @@ export default function GanttPage() {
             </Typography.Text>
             <Segmented
               value={mode}
-              onChange={(v) => setMode(v as GanttViewMode)}
+              onChange={v => setMode(v as GanttViewMode)}
               options={[
                 { label: '日', value: 'Day' },
                 { label: '周', value: 'Week' },
                 { label: '月', value: 'Month' },
               ]}
             />
-            <Checkbox checked={showSummary} onChange={(e) => setShowSummary(e.target.checked)}>
+            <Checkbox checked={showSummary} onChange={e => setShowSummary(e.target.checked)}>
               显示汇总条
             </Checkbox>
             <Tooltip title="选择要导出的日期区间；清空（或点「全部」）则导出整条时间轴。建议配合「周/月」视图使用，图片更窄更易读。">
               <DatePicker.RangePicker
                 value={exportRange}
-                onChange={(v) => setExportRange(v && v[0] && v[1] ? [v[0], v[1]] : null)}
+                onChange={v => setExportRange(v && v[0] && v[1] ? [v[0], v[1]] : null)}
                 disabled={!rangeStart || !rangeEnd}
                 allowClear
                 /**
@@ -777,10 +791,15 @@ export default function GanttPage() {
           才一次性提交保存，因此可以连续拖 2–3 天再松手。汇总条与里程碑仅供查看。
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-          视图说明：日=逐日刻度；周=按周标注（上排月份 / 下排每周起始日）；月=逐月。导出图片建议先切到「周 / 月」视图，图片宽度更小、更易阅读；工具栏的日期区间选择器可只截取某段日期导出，不选则导出整条时间轴；进入 WBS 页会拉取最新数据。
+          视图说明：日=逐日刻度；周=按周标注（上排月份 /
+          下排每周起始日）；月=逐月。导出图片建议先切到「周 /
+          月」视图，图片宽度更小、更易阅读；工具栏的日期区间选择器可只截取某段日期导出，不选则导出整条时间轴；进入
+          WBS 页会拉取最新数据。
         </Typography.Paragraph>
         {ganttItems.length === 0 && !loading ? (
-          <Typography.Text type="secondary">暂无已排期任务：请先在 WBS 页为任务设置计划日期。</Typography.Text>
+          <Typography.Text type="secondary">
+            暂无已排期任务：请先在 WBS 页为任务设置计划日期。
+          </Typography.Text>
         ) : null}
 
         {/* 导出范围：标题区 + 甘特图本体 + 图例，整块作为 PNG 导出 */}
@@ -793,8 +812,8 @@ export default function GanttPage() {
               {exportRange
                 ? `导出范围：${exportRange[0].format('YYYY-MM-DD')} ~ ${exportRange[1].format('YYYY-MM-DD')} ｜ `
                 : '导出范围：全部时间轴 ｜ '}
-              视图：{VIEW_MODE_LABEL[mode]}视图 ｜ 计划区间：{rangeText} ｜ 已排期任务 {leafCount} 项
-              {showSummary ? '（含汇总条）' : ''} ｜ 生成时间：{generatedAt}
+              视图：{VIEW_MODE_LABEL[mode]}视图 ｜ 计划区间：{rangeText} ｜ 已排期任务 {leafCount}{' '}
+              项{showSummary ? '（含汇总条）' : ''} ｜ 生成时间：{generatedAt}
             </div>
           </div>
 

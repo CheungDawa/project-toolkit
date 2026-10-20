@@ -99,30 +99,33 @@ export default function BaselinesPage() {
     }
   }
 
-  const handleDiff = useCallback(async (baseline: Baseline) => {
-    if (!projectId) return
-    try {
-      // 同时拉取任务列表补齐 actual_end（失败不阻断对比，仅降级为按今天估算）
-      const [rows, taskResp] = await Promise.all([
-        baselineDiff(projectId, baseline.id),
-        listTasks(projectId).catch(() => null),
-      ])
-      const map = new Map<string, TaskActualInfo>()
-      if (taskResp) {
-        for (const t of taskResp.items) {
-          map.set(t.id, { actualEnd: t.actual_end ?? null, status: t.status })
+  const handleDiff = useCallback(
+    async (baseline: Baseline) => {
+      if (!projectId) return
+      try {
+        // 同时拉取任务列表补齐 actual_end（失败不阻断对比，仅降级为按今天估算）
+        const [rows, taskResp] = await Promise.all([
+          baselineDiff(projectId, baseline.id),
+          listTasks(projectId).catch(() => null),
+        ])
+        const map = new Map<string, TaskActualInfo>()
+        if (taskResp) {
+          for (const t of taskResp.items) {
+            map.set(t.id, { actualEnd: t.actual_end ?? null, status: t.status })
+          }
         }
+        setTaskActualMap(map)
+        setDiffRows(rows)
+        setDiffBaseline(baseline)
+        setDiffOpen(true)
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '对比失败')
       }
-      setTaskActualMap(map)
-      setDiffRows(rows)
-      setDiffBaseline(baseline)
-      setDiffOpen(true)
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '对比失败')
-    }
-  }, [projectId, message])
+    },
+    [projectId, message],
+  )
 
-  const changedCount = diffRows.filter((r) => r.changed).length
+  const changedCount = diffRows.filter(r => r.changed).length
 
   /** 偏差汇总：总偏差天数 / 提前项数 / 延期项数 / 可比项数（不可比：已删除或基线缺计划日期） */
   const devSummary = useMemo(() => {
@@ -147,7 +150,12 @@ export default function BaselinesPage() {
     () => [
       { title: '基线名称', dataIndex: 'name' },
       { title: '版本', dataIndex: 'version', width: 80, render: (v: number) => <Tag>v{v}</Tag> },
-      { title: '冻结时间', dataIndex: 'frozen_at', width: 190, render: (v: string) => v.replace('T', ' ').slice(0, 19) },
+      {
+        title: '冻结时间',
+        dataIndex: 'frozen_at',
+        width: 190,
+        render: (v: string) => v.replace('T', ' ').slice(0, 19),
+      },
       { title: '说明', dataIndex: 'note', render: (v: string | null) => v ?? '-' },
       {
         title: '操作',
@@ -165,7 +173,12 @@ export default function BaselinesPage() {
   /** 对比表列定义：偏差列需要 taskActualMap 补齐实际完成日期，故依赖它 */
   const diffColumns: TableProps<BaselineDiffRow>['columns'] = useMemo(
     () => [
-      { title: 'WBS', dataIndex: 'wbs_code', width: 80, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+      {
+        title: 'WBS',
+        dataIndex: 'wbs_code',
+        width: 80,
+        render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+      },
       { title: '任务', dataIndex: 'name', width: 200 },
       {
         title: '基线计划起止',
@@ -198,7 +211,9 @@ export default function BaselinesPage() {
           return (
             <Space size={4}>
               <span style={{ color, fontWeight: 700 }}>{text}</span>
-              {dev.estimated ? <Tag style={{ fontSize: 10, marginInlineEnd: 0 }}>按今天估算</Tag> : null}
+              {dev.estimated ? (
+                <Tag style={{ fontSize: 10, marginInlineEnd: 0 }}>按今天估算</Tag>
+              ) : null}
             </Space>
           )
         },
@@ -240,7 +255,12 @@ export default function BaselinesPage() {
             <Input placeholder="说明（可选）" style={{ width: 240 }} />
           </Form.Item>
           <Form.Item>
-            <Button type="primary" icon={<SaveOutlined />} onClick={() => void handleCreate()} loading={loading}>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={() => void handleCreate()}
+              loading={loading}
+            >
               保存当前计划为基线
             </Button>
           </Form.Item>
@@ -256,14 +276,17 @@ export default function BaselinesPage() {
       </Card>
 
       <Drawer
-        title={diffBaseline ? `基线对比 · ${diffBaseline.name}（v${diffBaseline.version}）` : '基线对比'}
+        title={
+          diffBaseline ? `基线对比 · ${diffBaseline.name}（v${diffBaseline.version}）` : '基线对比'
+        }
         open={diffOpen}
         onClose={() => setDiffOpen(false)}
         width={960}
       >
         {diffBaseline ? (
           <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-            当前计划与基线差异：<Tag color={changedCount > 0 ? 'orange' : 'green'}>{changedCount} 项变化</Tag>
+            当前计划与基线差异：
+            <Tag color={changedCount > 0 ? 'orange' : 'green'}>{changedCount} 项变化</Tag>
           </Typography.Paragraph>
         ) : null}
         {/* 偏差汇总：总偏差天数 / 提前 / 延期（不可比项：当前已删除或基线无计划完成日期） */}

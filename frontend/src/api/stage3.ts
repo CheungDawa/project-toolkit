@@ -121,12 +121,15 @@ export const updateRisk = (id: string, payload: Record<string, unknown>) =>
 
 export const archiveRisk = (id: string) => api.delete(`/risks/${id}`)
 
-export const listAssessments = (riskId: string) => api.get<RiskAssessment[]>(`/risks/${riskId}/assessments`)
+export const listAssessments = (riskId: string) =>
+  api.get<RiskAssessment[]>(`/risks/${riskId}/assessments`)
 export const addAssessment = (riskId: string, payload: Record<string, unknown>) =>
   api.post<RiskAssessment>(`/risks/${riskId}/assessments`, payload)
 
-export const convertRisk = (riskId: string, payload: { target: string; task_name?: string; task_owner?: string }) =>
-  api.post<{ ok: boolean; risk_status: string }>(`/risks/${riskId}/convert`, payload)
+export const convertRisk = (
+  riskId: string,
+  payload: { target: string; task_name?: string; task_owner?: string },
+) => api.post<{ ok: boolean; risk_status: string }>(`/risks/${riskId}/convert`, payload)
 
 export const listIssues = (projectId: string, params: Record<string, unknown> = {}) =>
   api.get<IssueItem[]>(`/projects/${projectId}/issues${qs(params)}`)
@@ -142,14 +145,16 @@ export const closeIssue = (id: string, payload: Record<string, unknown>) =>
 
 export const deleteIssue = (id: string) => api.delete(`/issues/${id}`)
 
-export const listChanges = (projectId: string) => api.get<ChangeItem[]>(`/projects/${projectId}/changes`)
+export const listChanges = (projectId: string) =>
+  api.get<ChangeItem[]>(`/projects/${projectId}/changes`)
 export const createChange = (projectId: string, payload: Record<string, unknown>) =>
   api.post<ChangeItem>(`/projects/${projectId}/changes`, payload)
 export const updateChange = (id: string, payload: Record<string, unknown>) =>
   api.patch<ChangeItem>(`/changes/${id}`, payload)
 export const deleteChange = (id: string) => api.delete(`/changes/${id}`)
 
-export const listStakeholders = (projectId: string) => api.get<StakeholderItem[]>(`/projects/${projectId}/stakeholders`)
+export const listStakeholders = (projectId: string) =>
+  api.get<StakeholderItem[]>(`/projects/${projectId}/stakeholders`)
 export const createStakeholder = (projectId: string, payload: Record<string, unknown>) =>
   api.post<StakeholderItem>(`/projects/${projectId}/stakeholders`, payload)
 export const updateStakeholder = (id: string, payload: Record<string, unknown>) =>

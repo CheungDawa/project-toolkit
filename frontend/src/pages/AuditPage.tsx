@@ -18,7 +18,12 @@ const ACTION_TAG: Record<string, string> = {
 
 /** 列定义不读取任何组件状态，提到模块级：渲染间引用恒定，antd 不会重建表头/列宽 */
 const COLUMNS: TableProps<AuditLogItem>['columns'] = [
-  { title: '时间', dataIndex: 'occurred_at', width: 170, render: (v: string) => v.slice(0, 19).replace('T', ' ') },
+  {
+    title: '时间',
+    dataIndex: 'occurred_at',
+    width: 170,
+    render: (v: string) => v.slice(0, 19).replace('T', ' '),
+  },
   { title: '对象', dataIndex: 'object_type', width: 110, render: (v: string) => <Tag>{v}</Tag> },
   {
     title: '操作',
@@ -62,14 +67,24 @@ export default function AuditPage() {
           placeholder="按操作类型"
           allowClear
           style={{ width: 160 }}
-          options={['create', 'update', 'delete', 'archive', 'close', 'assess', 'convert_from_risk'].map((v) => ({ value: v, label: v }))}
+          options={[
+            'create',
+            'update',
+            'delete',
+            'archive',
+            'close',
+            'assess',
+            'convert_from_risk',
+          ].map(v => ({ value: v, label: v }))}
           onChange={setActionFilter}
         />
         <Select
           placeholder="按对象类型"
           allowClear
           style={{ width: 160 }}
-          options={['project', 'task', 'risk', 'issue', 'change', 'dependency', 'baseline'].map((v) => ({ value: v, label: v }))}
+          options={['project', 'task', 'risk', 'issue', 'change', 'dependency', 'baseline'].map(
+            v => ({ value: v, label: v }),
+          )}
           onChange={setObjectFilter}
         />
       </Space>

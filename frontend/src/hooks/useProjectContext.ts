@@ -24,7 +24,7 @@ export function useProjectContext(projectId: string | undefined): ProjectContext
   const [error, setError] = useState<'not_found' | 'network' | null>(null)
   const [tick, setTick] = useState(0)
 
-  const reload = useCallback(() => setTick((t) => t + 1), [])
+  const reload = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
     if (!projectId) {
@@ -37,10 +37,10 @@ export function useProjectContext(projectId: string | undefined): ProjectContext
     setLoading(true)
     setError(null)
     getProject(projectId)
-      .then((p) => {
+      .then(p => {
         if (!cancelled) setProject(p)
       })
-      .catch((err) => {
+      .catch(err => {
         if (cancelled) return
         if (err instanceof ApiError && err.status === 404) {
           setError('not_found')

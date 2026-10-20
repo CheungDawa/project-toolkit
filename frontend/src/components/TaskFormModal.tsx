@@ -28,7 +28,13 @@ interface FormValues {
   deliverable_name?: string
 }
 
-export default function TaskFormModal({ open, task, parent, onCancel, onSubmit }: TaskFormModalProps) {
+export default function TaskFormModal({
+  open,
+  task,
+  parent,
+  onCancel,
+  onSubmit,
+}: TaskFormModalProps) {
   const [form] = Form.useForm<FormValues>()
 
   useEffect(() => {
@@ -97,11 +103,15 @@ export default function TaskFormModal({ open, task, parent, onCancel, onSubmit }
     <Modal title={title} open={open} onCancel={onCancel} onOk={handleOk} width={640} destroyOnClose>
       <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-          <Form.Item name="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]}>
+          <Form.Item
+            name="name"
+            label="任务名称"
+            rules={[{ required: true, message: '请输入任务名称' }]}
+          >
             <Input placeholder="任务名称" />
           </Form.Item>
           <Form.Item name="status" label="状态">
-            <Select options={STATUS_OPTIONS.map((v) => ({ value: v, label: v }))} />
+            <Select options={STATUS_OPTIONS.map(v => ({ value: v, label: v }))} />
           </Form.Item>
           <Form.Item name="priority" label="优先级">
             <Select

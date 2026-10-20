@@ -65,8 +65,7 @@ const DIFF_COLUMNS: TableProps<BaselineDiffRow>['columns'] = [
     title: '差异',
     key: 'changed',
     width: 90,
-    render: (_: unknown, r) =>
-      r.changed ? <Tag color="orange">有变化</Tag> : <Tag>无变化</Tag>,
+    render: (_: unknown, r) => (r.changed ? <Tag color="orange">有变化</Tag> : <Tag>无变化</Tag>),
   },
   {
     title: '基线值 → 当前值',
@@ -78,8 +77,7 @@ const DIFF_COLUMNS: TableProps<BaselineDiffRow>['columns'] = [
         <div>
           {keys.map(key => (
             <div key={key}>
-              {key}：{String(r.baseline?.[key] ?? '-')} →{' '}
-              {String(r.current?.[key] ?? '-')}
+              {key}：{String(r.baseline?.[key] ?? '-')} → {String(r.current?.[key] ?? '-')}
             </div>
           ))}
         </div>
@@ -136,20 +134,23 @@ export default function ChangesPage() {
     setModalOpen(true)
   }
 
-  const openEdit = useCallback((item: ChangeItem) => {
-    setEditing(item)
-    form.setFieldsValue({
-      title: item.title,
-      origin: item.origin,
-      scope_impact: item.scope_impact,
-      schedule_impact: item.schedule_impact,
-      approval_status: item.approval_status,
-      implementation_plan: item.implementation_plan,
-      verification_result: item.verification_result,
-      requested_by: item.requested_by,
-    })
-    setModalOpen(true)
-  }, [form])
+  const openEdit = useCallback(
+    (item: ChangeItem) => {
+      setEditing(item)
+      form.setFieldsValue({
+        title: item.title,
+        origin: item.origin,
+        scope_impact: item.scope_impact,
+        schedule_impact: item.schedule_impact,
+        approval_status: item.approval_status,
+        implementation_plan: item.implementation_plan,
+        verification_result: item.verification_result,
+        requested_by: item.requested_by,
+      })
+      setModalOpen(true)
+    },
+    [form],
+  )
 
   const handleOk = async () => {
     if (!projectId) return
@@ -172,50 +173,59 @@ export default function ChangesPage() {
     }
   }
 
-  const handleDelete = useCallback(async (item: ChangeItem) => {
-    try {
-      await deleteChange(item.id)
-      message.success('变更已删除')
-      await fetchData()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '删除失败')
-    }
-  }, [fetchData, message])
+  const handleDelete = useCallback(
+    async (item: ChangeItem) => {
+      try {
+        await deleteChange(item.id)
+        message.success('变更已删除')
+        await fetchData()
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '删除失败')
+      }
+    },
+    [fetchData, message],
+  )
 
   /** 审批通过后拍基线：冻结当前计划快照，供后续比对 */
-  const handleSnapshot = useCallback(async (item: ChangeItem) => {
-    if (!projectId) return
-    setSnapshotId(item.id)
-    try {
-      const baseline = await createBaseline(projectId, {
-        name: `变更基线-${item.title}`,
-        note: `${BASELINE_NOTE} · 变更ID:${item.id}`,
-      })
-      message.success(
-        `已拍基线：${baseline.name}（v${baseline.version}，${baseline.frozen_at.slice(0, 10)}）`,
-      )
-      await loadBaselines()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '拍基线失败')
-    } finally {
-      setSnapshotId(null)
-    }
-  }, [projectId, loadBaselines, message])
+  const handleSnapshot = useCallback(
+    async (item: ChangeItem) => {
+      if (!projectId) return
+      setSnapshotId(item.id)
+      try {
+        const baseline = await createBaseline(projectId, {
+          name: `变更基线-${item.title}`,
+          note: `${BASELINE_NOTE} · 变更ID:${item.id}`,
+        })
+        message.success(
+          `已拍基线：${baseline.name}（v${baseline.version}，${baseline.frozen_at.slice(0, 10)}）`,
+        )
+        await loadBaselines()
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '拍基线失败')
+      } finally {
+        setSnapshotId(null)
+      }
+    },
+    [projectId, loadBaselines, message],
+  )
 
   /** 打开基线比对：查看变更后当前计划与该基线的差异 */
-  const openDiff = useCallback(async (baseline: Baseline) => {
-    if (!projectId) return
-    setDiffOpen(baseline)
-    setDiffRows([])
-    setDiffLoading(true)
-    try {
-      setDiffRows(await baselineDiff(projectId, baseline.id))
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '加载基线差异失败')
-    } finally {
-      setDiffLoading(false)
-    }
-  }, [projectId, message])
+  const openDiff = useCallback(
+    async (baseline: Baseline) => {
+      if (!projectId) return
+      setDiffOpen(baseline)
+      setDiffRows([])
+      setDiffLoading(true)
+      try {
+        setDiffRows(await baselineDiff(projectId, baseline.id))
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '加载基线差异失败')
+      } finally {
+        setDiffLoading(false)
+      }
+    },
+    [projectId, message],
+  )
 
   /** 变更列表列定义：依赖的 baselines/snapshotId 与回调均已稳定或低频，memo 避免每次渲染重建 */
   const columns: TableProps<ChangeItem>['columns'] = useMemo(
@@ -282,9 +292,7 @@ export default function ChangesPage() {
               </Button>
               <Tooltip
                 title={
-                  allowed
-                    ? '冻结当前计划快照，作为该变更的留痕基线'
-                    : '审批通过后才能拍基线留痕'
+                  allowed ? '冻结当前计划快照，作为该变更的留痕基线' : '审批通过后才能拍基线留痕'
                 }
               >
                 <Button

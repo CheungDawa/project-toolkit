@@ -7,7 +7,12 @@ import type { Setting } from '../api/settings'
 
 /** 列定义不读取任何组件状态，提到模块级：渲染间引用恒定，antd 不会重建表头/列宽 */
 const COLUMNS: TableProps<Setting>['columns'] = [
-  { title: '配置键', dataIndex: 'key', width: 260, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+  {
+    title: '配置键',
+    dataIndex: 'key',
+    width: 260,
+    render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+  },
   {
     title: '当前值',
     dataIndex: 'value',
@@ -18,7 +23,12 @@ const COLUMNS: TableProps<Setting>['columns'] = [
     ),
   },
   { title: '说明', dataIndex: 'description', render: (v: string | null) => v ?? '-' },
-  { title: '更新时间', dataIndex: 'updated_at', width: 180, render: (v: string) => v.slice(0, 19).replace('T', ' ') },
+  {
+    title: '更新时间',
+    dataIndex: 'updated_at',
+    width: 180,
+    render: (v: string) => v.slice(0, 19).replace('T', ' '),
+  },
 ]
 
 export default function SettingsPage() {
@@ -32,7 +42,7 @@ export default function SettingsPage() {
       try {
         const all = await listSettings()
         // AI 模块已移除：model.default 配置已无效，不再展示
-        setSettings(all.filter((s) => s.key !== 'model.default'))
+        setSettings(all.filter(s => s.key !== 'model.default'))
       } catch (err) {
         message.error(err instanceof Error ? err.message : '加载设置失败')
       } finally {
@@ -45,7 +55,8 @@ export default function SettingsPage() {
     <div>
       <Card title="系统设置">
         <Typography.Paragraph type="secondary">
-          基础参数存储在 app_settings 表中。工作日历（阶段 2）与风险评分规则（阶段 3）已启用，可直接调整阈值。
+          基础参数存储在 app_settings 表中。工作日历（阶段 2）与风险评分规则（阶段
+          3）已启用，可直接调整阈值。
         </Typography.Paragraph>
         <Table<Setting>
           rowKey="key"

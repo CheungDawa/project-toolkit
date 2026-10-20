@@ -33,10 +33,16 @@ export default function ReportsPage() {
         title="报告中心"
         extra={
           <Space wrap>
-            <Button icon={<DownloadOutlined />} onClick={() => window.open(reportExportUrl(projectId!, 'weekly'))}>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => window.open(reportExportUrl(projectId!, 'weekly'))}
+            >
               导出周报 Word
             </Button>
-            <Button icon={<DownloadOutlined />} onClick={() => window.open(reportExportUrl(projectId!, 'final'))}>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => window.open(reportExportUrl(projectId!, 'final'))}
+            >
               导出收尾报告 Word
             </Button>
           </Space>
@@ -44,7 +50,8 @@ export default function ReportsPage() {
       >
         <Typography.Paragraph type="secondary">
           <Tag color="blue">TD-03</Tag>
-          Word 导出基于真实数据库字段（python-docx 模板字段映射）；周报正文含统计截止日期、数据来源、生成时间。
+          Word 导出基于真实数据库字段（python-docx
+          模板字段映射）；周报正文含统计截止日期、数据来源、生成时间。
         </Typography.Paragraph>
 
         <Card size="small" title="周报预览（真实数据聚合）" loading={loading}>
@@ -53,7 +60,9 @@ export default function ReportsPage() {
               <Typography.Paragraph type="secondary" style={{ whiteSpace: 'pre-wrap' }}>
                 {weekly.meta}
               </Typography.Paragraph>
-              <Typography.Paragraph style={{ whiteSpace: 'pre-wrap' }}>{weekly.content}</Typography.Paragraph>
+              <Typography.Paragraph style={{ whiteSpace: 'pre-wrap' }}>
+                {weekly.content}
+              </Typography.Paragraph>
             </>
           ) : (
             <Typography.Text type="secondary">生成中…</Typography.Text>

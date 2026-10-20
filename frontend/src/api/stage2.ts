@@ -129,15 +129,20 @@ export const updateTask = (taskId: string, payload: Partial<TaskPayload>) =>
  * - 语义与单条 PATCH 一致但不做日期/工期重算；
  * - 缺失的 id 进 not_found，不会让整单失败（updated 可能小于 items.length）。
  */
-export const bulkUpdateTasks = (projectId: string, items: TaskBulkItem[]): Promise<TaskBulkResult> =>
+export const bulkUpdateTasks = (
+  projectId: string,
+  items: TaskBulkItem[],
+): Promise<TaskBulkResult> =>
   api.patch<TaskBulkResult>(`/projects/${projectId}/tasks/bulk`, { items })
 
 export const deleteTask = (taskId: string) => api.delete(`/tasks/${taskId}`)
 
 export const copyTask = (taskId: string) => api.post<TaskItem>(`/tasks/${taskId}/copy`)
 
-export const reorderTask = (projectId: string, body: { task_id: string; new_parent_id?: string | null; new_index: number }) =>
-  api.post<{ ok: boolean }>(`/projects/${projectId}/tasks/reorder`, body)
+export const reorderTask = (
+  projectId: string,
+  body: { task_id: string; new_parent_id?: string | null; new_index: number },
+) => api.post<{ ok: boolean }>(`/projects/${projectId}/tasks/reorder`, body)
 
 export const exportTasksUrl = (projectId: string) => `/api/projects/${projectId}/tasks/export`
 
@@ -156,7 +161,10 @@ export interface TaskImportResult {
 export const importTasks = async (projectId: string, file: File): Promise<TaskImportResult> => {
   const form = new FormData()
   form.append('file', file)
-  const resp = await fetch(`/api/projects/${projectId}/tasks/import`, { method: 'POST', body: form })
+  const resp = await fetch(`/api/projects/${projectId}/tasks/import`, {
+    method: 'POST',
+    body: form,
+  })
   const body = await resp.json().catch(() => null)
   if (!resp.ok) {
     const message = body?.error?.message ?? `导入失败（${resp.status}）`
@@ -166,7 +174,11 @@ export const importTasks = async (projectId: string, file: File): Promise<TaskIm
 }
 
 /** 从其他项目整棵复制 WBS 树（作为顶级任务追加；with_dates=true 时连计划日期一起复制） */
-export const cloneTasksFromProject = (projectId: string, sourceProjectId: string, withDates = false) =>
+export const cloneTasksFromProject = (
+  projectId: string,
+  sourceProjectId: string,
+  withDates = false,
+) =>
   api.post<{ created: number; with_dates: boolean }>(
     `/projects/${projectId}/tasks/clone-from/${sourceProjectId}?with_dates=${withDates ? 'true' : 'false'}`,
   )
@@ -174,8 +186,10 @@ export const cloneTasksFromProject = (projectId: string, sourceProjectId: string
 export const listDependencies = (projectId: string) =>
   api.get<DependencyItem[]>(`/projects/${projectId}/dependencies`)
 
-export const createDependency = (projectId: string, payload: { predecessor_id: string; successor_id: string; dep_type?: string; lag_days?: number }) =>
-  api.post<DependencyItem>(`/projects/${projectId}/dependencies`, payload)
+export const createDependency = (
+  projectId: string,
+  payload: { predecessor_id: string; successor_id: string; dep_type?: string; lag_days?: number },
+) => api.post<DependencyItem>(`/projects/${projectId}/dependencies`, payload)
 
 export const deleteDependency = (depId: string) => api.delete(`/dependencies/${depId}`)
 
@@ -200,4 +214,6 @@ export const baselineDiff = (projectId: string, baselineId: string) =>
   api.get<BaselineDiffRow[]>(`/projects/${projectId}/baselines/${baselineId}/diff`)
 
 export const getCalendar = (projectId: string) =>
-  api.get<{ weekends: number[]; holidays: string[]; extra_workdays: string[] }>(`/projects/${projectId}/calendar`)
+  api.get<{ weekends: number[]; holidays: string[]; extra_workdays: string[] }>(
+    `/projects/${projectId}/calendar`,
+  )

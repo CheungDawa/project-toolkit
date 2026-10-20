@@ -10,7 +10,13 @@ import type { TableProps } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { archiveProject, createProject, deleteProject, listProjects, updateProject } from '../api/projects'
+import {
+  archiveProject,
+  createProject,
+  deleteProject,
+  listProjects,
+  updateProject,
+} from '../api/projects'
 import type { Project, ProjectPayload } from '../api/projects'
 import ProjectFormModal, { STATUS_OPTIONS } from '../components/ProjectFormModal'
 
@@ -105,7 +111,12 @@ export default function ProjectListPage() {
       { title: '编号', dataIndex: 'code', width: 140, sorter: true },
       { title: '项目名称', dataIndex: 'name', width: 200 },
       { title: '客户', dataIndex: 'customer', width: 160, render: (v: string | null) => v ?? '-' },
-      { title: '项目经理', dataIndex: 'manager', width: 110, render: (v: string | null) => v ?? '-' },
+      {
+        title: '项目经理',
+        dataIndex: 'manager',
+        width: 110,
+        render: (v: string | null) => v ?? '-',
+      },
       {
         title: '状态',
         dataIndex: 'status',
@@ -113,7 +124,9 @@ export default function ProjectListPage() {
         render: (v: string | null, record) => {
           if (record.archived_at) return <Tag color="gold">已归档</Tag>
           if (!v) return '-'
-          return <Tag color={v === '已完成' ? 'green' : v === '进行中' ? 'blue' : 'default'}>{v}</Tag>
+          return (
+            <Tag color={v === '已完成' ? 'green' : v === '进行中' ? 'blue' : 'default'}>{v}</Tag>
+          )
         },
       },
       {
@@ -136,7 +149,11 @@ export default function ProjectListPage() {
         width: 230,
         render: (_: unknown, record) => (
           <Space size="small">
-            <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/projects/${record.id}`)}>
+            <Button
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => navigate(`/projects/${record.id}`)}
+            >
               查看
             </Button>
             <Button
@@ -202,7 +219,7 @@ export default function ProjectListPage() {
               placeholder="搜索编号 / 名称 / 客户"
               allowClear
               style={{ width: 280 }}
-              onSearch={(v) => {
+              onSearch={v => {
                 setKeyword(v)
                 setPage(1)
               }}
@@ -211,8 +228,8 @@ export default function ProjectListPage() {
               placeholder="按状态筛选"
               allowClear
               style={{ width: 140 }}
-              options={STATUS_OPTIONS.map((v) => ({ value: v, label: v }))}
-              onChange={(v) => {
+              options={STATUS_OPTIONS.map(v => ({ value: v, label: v }))}
+              onChange={v => {
                 setStatus(v)
                 setPage(1)
               }}
@@ -224,13 +241,20 @@ export default function ProjectListPage() {
                 { value: 'exclude', label: '隐藏归档' },
                 { value: 'only', label: '仅归档' },
               ]}
-              onChange={(v) => {
+              onChange={v => {
                 setArchived(v)
                 setPage(1)
               }}
             />
           </Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setModalOpen(true) }}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditing(null)
+              setModalOpen(true)
+            }}
+          >
             新建项目
           </Button>
         </div>
@@ -244,10 +268,14 @@ export default function ProjectListPage() {
             pageSize: PAGE_SIZE,
             total,
             showSizeChanger: false,
-            showTotal: (t) => `共 ${t} 个项目`,
+            showTotal: t => `共 ${t} 个项目`,
           }}
           onChange={handleTableChange}
-          locale={{ emptyText: <Typography.Text type="secondary">暂无项目，点击「新建项目」创建</Typography.Text> }}
+          locale={{
+            emptyText: (
+              <Typography.Text type="secondary">暂无项目，点击「新建项目」创建</Typography.Text>
+            ),
+          }}
           scroll={{ x: 1100 }}
         />
       </Card>
@@ -255,7 +283,10 @@ export default function ProjectListPage() {
       <ProjectFormModal
         open={modalOpen}
         project={editing}
-        onCancel={() => { setModalOpen(false); setEditing(null) }}
+        onCancel={() => {
+          setModalOpen(false)
+          setEditing(null)
+        }}
         onSubmit={handleSubmit}
       />
     </div>

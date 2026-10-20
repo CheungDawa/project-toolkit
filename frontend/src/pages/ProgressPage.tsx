@@ -39,8 +39,17 @@ const SNAPSHOT_COLUMNS: TableProps<SnapshotItem>['columns'] = [
   { title: '已完成', dataIndex: 'completed_tasks', width: 90 },
   { title: '剩余任务', dataIndex: 'remaining_tasks', width: 100 },
   { title: '总工时', dataIndex: 'total_hours', width: 90, render: (v: number) => v.toFixed(1) },
-  { title: '剩余工时', dataIndex: 'remaining_hours', width: 90, render: (v: number) => v.toFixed(1) },
-  { title: '采集时间', dataIndex: 'captured_at', render: (v: string) => v.slice(0, 19).replace('T', ' ') },
+  {
+    title: '剩余工时',
+    dataIndex: 'remaining_hours',
+    width: 90,
+    render: (v: number) => v.toFixed(1),
+  },
+  {
+    title: '采集时间',
+    dataIndex: 'captured_at',
+    render: (v: string) => v.slice(0, 19).replace('T', ' '),
+  },
 ]
 
 /** 理想线（前端按计划日期计算，替代后端以首份快照为起点的口径） */
@@ -101,11 +110,13 @@ export default function ProgressPage() {
   const idealLine = useMemo<IdealLine | null>(() => {
     if (!data || data.snapshots.length === 0) return null
     const snaps = data.snapshots
-    const planStarts = (tasks ?? []).map((t) => t.plan_start).filter((v): v is string => !!v)
-    const planEnds = (tasks ?? []).map((t) => t.plan_end).filter((v): v is string => !!v)
+    const planStarts = (tasks ?? []).map(t => t.plan_start).filter((v): v is string => !!v)
+    const planEnds = (tasks ?? []).map(t => t.plan_end).filter((v): v is string => !!v)
     const fallback = planStarts.length === 0 || planEnds.length === 0
     const start = planStarts.length ? planStarts.reduce((a, b) => (a < b ? a : b)) : snaps[0].date
-    const end = planEnds.length ? planEnds.reduce((a, b) => (a > b ? a : b)) : snaps[snaps.length - 1].date
+    const end = planEnds.length
+      ? planEnds.reduce((a, b) => (a > b ? a : b))
+      : snaps[snaps.length - 1].date
     const durationDays = daysBetween(start, end)
     if (durationDays <= 0) {
       return {
@@ -160,18 +171,19 @@ export default function ProgressPage() {
     const series: Record<string, unknown>[] = []
     const idealData =
       idealLine && idealLine.points.length > 0
-        ? idealLine.points.map((p) => [p.date, metric === 'tasks' ? p.remaining_tasks : p.remaining_hours])
+        ? idealLine.points.map(p => [
+            p.date,
+            metric === 'tasks' ? p.remaining_tasks : p.remaining_hours,
+          ])
         : null
     if (metric === 'tasks') {
-      series.push(
-        {
-          name: '实际剩余任务数',
-          type: 'line',
-          data: points.map((p) => [p.date, p.remaining_tasks]),
-          symbol: 'circle',
-          lineStyle: { width: 2 },
-        },
-      )
+      series.push({
+        name: '实际剩余任务数',
+        type: 'line',
+        data: points.map(p => [p.date, p.remaining_tasks]),
+        symbol: 'circle',
+        lineStyle: { width: 2 },
+      })
       if (idealData) {
         series.push({
           name: '理想曲线（任务）',
@@ -182,15 +194,13 @@ export default function ProgressPage() {
         })
       }
     } else {
-      series.push(
-        {
-          name: '实际剩余工时',
-          type: 'line',
-          data: points.map((p) => [p.date, p.remaining_hours]),
-          symbol: 'circle',
-          lineStyle: { width: 2 },
-        },
-      )
+      series.push({
+        name: '实际剩余工时',
+        type: 'line',
+        data: points.map(p => [p.date, p.remaining_hours]),
+        symbol: 'circle',
+        lineStyle: { width: 2 },
+      })
       if (idealData) {
         series.push({
           name: '理想曲线（工时）',
@@ -204,7 +214,7 @@ export default function ProgressPage() {
     instance.setOption(
       {
         tooltip: { trigger: 'axis' },
-        legend: { data: series.map((s) => String(s.name)) },
+        legend: { data: series.map(s => String(s.name)) },
         grid: { left: 60, right: 20, top: 40, bottom: 40 },
         xAxis: { type: 'time' },
         yAxis: { type: 'value', minInterval: 1 },
@@ -213,7 +223,6 @@ export default function ProgressPage() {
       true,
     )
   }, [data, metric, idealLine])
-
 
   const handleCapture = async () => {
     if (!projectId) return
@@ -235,16 +244,23 @@ export default function ProgressPage() {
         extra={
           <Space>
             <Tag color="blue">BR-03</Tag>
-            <Typography.Text type="secondary">实际曲线仅基于真实快照，不生成虚假历史</Typography.Text>
+            <Typography.Text type="secondary">
+              实际曲线仅基于真实快照，不生成虚假历史
+            </Typography.Text>
             <Segmented
               value={metric}
-              onChange={(v) => setMetric(v as 'tasks' | 'hours')}
+              onChange={v => setMetric(v as 'tasks' | 'hours')}
               options={[
                 { label: '任务数', value: 'tasks' },
                 { label: '剩余工时', value: 'hours' },
               ]}
             />
-            <Button type="primary" icon={<CameraOutlined />} onClick={() => void handleCapture()} loading={loading}>
+            <Button
+              type="primary"
+              icon={<CameraOutlined />}
+              onClick={() => void handleCapture()}
+              loading={loading}
+            >
               记录今日快照
             </Button>
           </Space>
@@ -258,7 +274,8 @@ export default function ProgressPage() {
         {!isEmpty ? (
           <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 4 }}>
             {idealLine ? idealLine.note : '理想线：数据不足，暂未绘制'}
-            ；数据更新时间：{snapshots[snapshots.length - 1]?.captured_at?.slice(0, 16).replace('T', ' ')}
+            ；数据更新时间：
+            {snapshots[snapshots.length - 1]?.captured_at?.slice(0, 16).replace('T', ' ')}
           </Typography.Paragraph>
         ) : null}
       </Card>

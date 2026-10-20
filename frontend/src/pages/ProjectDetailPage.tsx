@@ -24,18 +24,78 @@ import type { Project, ProjectPayload } from '../api/projects'
 import ProjectFormModal from '../components/ProjectFormModal'
 
 const ACTIVE_MODULES = [
-  { icon: <ApartmentOutlined />, name: 'WBS 任务', color: 'linear-gradient(135deg,#4f46e5,#7c6ff5)', to: (id: string) => `/projects/${id}/wbs` },
-  { icon: <BarChartOutlined />, name: '甘特图', color: 'linear-gradient(135deg,#0ea5e9,#38bdf8)', to: (id: string) => `/projects/${id}/gantt` },
-  { icon: <FlagOutlined />, name: '里程碑', color: 'linear-gradient(135deg,#f59e0b,#fbbf24)', to: (id: string) => `/projects/${id}/milestones` },
-  { icon: <LinkOutlined />, name: '计划基线', color: 'linear-gradient(135deg,#14b8a6,#2dd4bf)', to: (id: string) => `/projects/${id}/baselines` },
-  { icon: <WarningOutlined />, name: '风险', color: 'linear-gradient(135deg,#ef4444,#f87171)', to: (id: string) => `/projects/${id}/risks` },
-  { icon: <BugOutlined />, name: '问题', color: 'linear-gradient(135deg,#d97706,#f59e0b)', to: (id: string) => `/projects/${id}/issues` },
-  { icon: <FundProjectionScreenOutlined />, name: '变更', color: 'linear-gradient(135deg,#8b5cf6,#a78bfa)', to: (id: string) => `/projects/${id}/changes` },
-  { icon: <TeamOutlined />, name: '干系人', color: 'linear-gradient(135deg,#06b6d4,#22d3ee)', to: (id: string) => `/projects/${id}/stakeholders` },
-  { icon: <FileDoneOutlined />, name: '交付资料', color: 'linear-gradient(135deg,#10b981,#34d399)', to: (id: string) => `/projects/${id}/deliverables` },
-  { icon: <BarChartOutlined />, name: '燃尽图/快照', color: 'linear-gradient(135deg,#3b82f6,#60a5fa)', to: (id: string) => `/projects/${id}/progress` },
-  { icon: <FileTextOutlined />, name: '报告中心', color: 'linear-gradient(135deg,#6366f1,#818cf8)', to: (id: string) => `/projects/${id}/reports` },
-  { icon: <AuditOutlined />, name: '审计日志', color: 'linear-gradient(135deg,#64748b,#94a3b8)', to: (id: string) => `/projects/${id}/audit` },
+  {
+    icon: <ApartmentOutlined />,
+    name: 'WBS 任务',
+    color: 'linear-gradient(135deg,#4f46e5,#7c6ff5)',
+    to: (id: string) => `/projects/${id}/wbs`,
+  },
+  {
+    icon: <BarChartOutlined />,
+    name: '甘特图',
+    color: 'linear-gradient(135deg,#0ea5e9,#38bdf8)',
+    to: (id: string) => `/projects/${id}/gantt`,
+  },
+  {
+    icon: <FlagOutlined />,
+    name: '里程碑',
+    color: 'linear-gradient(135deg,#f59e0b,#fbbf24)',
+    to: (id: string) => `/projects/${id}/milestones`,
+  },
+  {
+    icon: <LinkOutlined />,
+    name: '计划基线',
+    color: 'linear-gradient(135deg,#14b8a6,#2dd4bf)',
+    to: (id: string) => `/projects/${id}/baselines`,
+  },
+  {
+    icon: <WarningOutlined />,
+    name: '风险',
+    color: 'linear-gradient(135deg,#ef4444,#f87171)',
+    to: (id: string) => `/projects/${id}/risks`,
+  },
+  {
+    icon: <BugOutlined />,
+    name: '问题',
+    color: 'linear-gradient(135deg,#d97706,#f59e0b)',
+    to: (id: string) => `/projects/${id}/issues`,
+  },
+  {
+    icon: <FundProjectionScreenOutlined />,
+    name: '变更',
+    color: 'linear-gradient(135deg,#8b5cf6,#a78bfa)',
+    to: (id: string) => `/projects/${id}/changes`,
+  },
+  {
+    icon: <TeamOutlined />,
+    name: '干系人',
+    color: 'linear-gradient(135deg,#06b6d4,#22d3ee)',
+    to: (id: string) => `/projects/${id}/stakeholders`,
+  },
+  {
+    icon: <FileDoneOutlined />,
+    name: '交付资料',
+    color: 'linear-gradient(135deg,#10b981,#34d399)',
+    to: (id: string) => `/projects/${id}/deliverables`,
+  },
+  {
+    icon: <BarChartOutlined />,
+    name: '燃尽图/快照',
+    color: 'linear-gradient(135deg,#3b82f6,#60a5fa)',
+    to: (id: string) => `/projects/${id}/progress`,
+  },
+  {
+    icon: <FileTextOutlined />,
+    name: '报告中心',
+    color: 'linear-gradient(135deg,#6366f1,#818cf8)',
+    to: (id: string) => `/projects/${id}/reports`,
+  },
+  {
+    icon: <AuditOutlined />,
+    name: '审计日志',
+    color: 'linear-gradient(135deg,#64748b,#94a3b8)',
+    to: (id: string) => `/projects/${id}/audit`,
+  },
 ]
 
 export default function ProjectDetailPage() {
@@ -99,7 +159,11 @@ export default function ProjectDetailPage() {
   }
 
   if (loading) {
-    return <Card><Skeleton active /></Card>
+    return (
+      <Card>
+        <Skeleton active />
+      </Card>
+    )
   }
   if (!project) {
     return null
@@ -121,10 +185,7 @@ export default function ProjectDetailPage() {
             <Button icon={<EditOutlined />} onClick={() => setModalOpen(true)}>
               编辑
             </Button>
-            <Popconfirm
-              title="确认归档该项目？"
-              onConfirm={() => void handleArchive()}
-            >
+            <Popconfirm title="确认归档该项目？" onConfirm={() => void handleArchive()}>
               <Button icon={<InboxOutlined />} disabled={!!project.archived_at}>
                 归档
               </Button>
@@ -149,7 +210,15 @@ export default function ProjectDetailPage() {
           <Descriptions.Item label="项目经理">{project.manager ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="项目阶段">{project.phase ?? '-'}</Descriptions.Item>
           <Descriptions.Item label="状态">
-            <Tag color={project.status === '已完成' ? 'green' : project.status === '进行中' ? 'blue' : 'default'}>
+            <Tag
+              color={
+                project.status === '已完成'
+                  ? 'green'
+                  : project.status === '进行中'
+                    ? 'blue'
+                    : 'default'
+              }
+            >
               {project.status ?? '-'}
             </Tag>
           </Descriptions.Item>
@@ -173,8 +242,14 @@ export default function ProjectDetailPage() {
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
           12 个模块全部启用，可点击直达（或从左侧「项目模块」菜单进入）。
         </Typography.Paragraph>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 }}>
-          {ACTIVE_MODULES.map((m) => (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+            gap: 12,
+          }}
+        >
+          {ACTIVE_MODULES.map(m => (
             <Card
               key={m.name}
               size="small"

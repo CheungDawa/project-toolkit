@@ -109,20 +109,23 @@ export default function IssuesPage() {
     setModalOpen(true)
   }
 
-  const openEdit = useCallback((issue: IssueItem) => {
-    setEditing(issue)
-    form.setFieldsValue({
-      title: issue.title,
-      detail: issue.detail,
-      severity: issue.severity,
-      owner: issue.owner,
-      due_date: issue.due_date,
-      root_cause: issue.root_cause,
-      solution: issue.solution,
-      status: issue.status,
-    })
-    setModalOpen(true)
-  }, [form])
+  const openEdit = useCallback(
+    (issue: IssueItem) => {
+      setEditing(issue)
+      form.setFieldsValue({
+        title: issue.title,
+        detail: issue.detail,
+        severity: issue.severity,
+        owner: issue.owner,
+        due_date: issue.due_date,
+        root_cause: issue.root_cause,
+        solution: issue.solution,
+        status: issue.status,
+      })
+      setModalOpen(true)
+    },
+    [form],
+  )
 
   const handleOk = async () => {
     if (!projectId) return
@@ -157,15 +160,18 @@ export default function IssuesPage() {
     }
   }
 
-  const handleDelete = useCallback(async (issue: IssueItem) => {
-    try {
-      await deleteIssue(issue.id)
-      message.success('问题已删除')
-      await fetchData()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '删除失败')
-    }
-  }, [fetchData, message])
+  const handleDelete = useCallback(
+    async (issue: IssueItem) => {
+      try {
+        await deleteIssue(issue.id)
+        message.success('问题已删除')
+        await fetchData()
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '删除失败')
+      }
+    },
+    [fetchData, message],
+  )
 
   /** 列定义依赖的渲染函数/回调均已稳定（useCallback），memo 后引用仅在真正变化时更新 */
   const columns: TableProps<IssueItem>['columns'] = useMemo(

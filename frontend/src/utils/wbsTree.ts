@@ -58,7 +58,9 @@ function ownRange(node: WbsRangeNode): WbsRange {
  *
  * 复杂度 O(n)，一次遍历。
  */
-export function buildChildrenMap<T extends WbsTreeNodeLike>(items: readonly T[]): Map<string | null, T[]> {
+export function buildChildrenMap<T extends WbsTreeNodeLike>(
+  items: readonly T[],
+): Map<string | null, T[]> {
   const map = new Map<string | null, T[]>()
   for (const item of items) {
     const key = item.parent_id ?? null
@@ -127,7 +129,12 @@ export function buildDescendantRanges<T extends WbsRangeNode>(
         // 等 kid 变成 done 后再回到同一支做合并。
         if (kidState !== 'done') {
           state.set(kid.id, 'visiting')
-          stack.push({ id: kid.id, kids: childrenMap.get(kid.id) ?? [], index: 0, acc: emptyRange() })
+          stack.push({
+            id: kid.id,
+            kids: childrenMap.get(kid.id) ?? [],
+            index: 0,
+            acc: emptyRange(),
+          })
           continue
         }
 
@@ -192,7 +199,7 @@ export function descendantRange<T extends WbsRangeNode>(
  */
 export function compareWbsCode(a: string, b: string): number {
   const toKey = (code: string): number[] =>
-    code.split('.').map((part) => {
+    code.split('.').map(part => {
       const value = Number.parseInt(part, 10)
       return Number.isFinite(value) ? value : 1e6
     })

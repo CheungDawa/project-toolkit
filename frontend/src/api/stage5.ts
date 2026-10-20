@@ -41,7 +41,8 @@ export interface DeliverableItem {
   updated_at: string
 }
 
-export const captureSnapshot = (projectId: string) => api.post<SnapshotItem>(`/projects/${projectId}/snapshots`, {})
+export const captureSnapshot = (projectId: string) =>
+  api.post<SnapshotItem>(`/projects/${projectId}/snapshots`, {})
 export interface AttachmentItem {
   id: string
   file_name: string
@@ -54,12 +55,19 @@ export interface ProjectAttachmentItem extends AttachmentItem {
   deliverable_id: string
 }
 
-export const listSnapshots = (projectId: string) => api.get<SnapshotItem[]>(`/projects/${projectId}/snapshots`)
-export const burndown = (projectId: string) => api.get<BurndownResponse>(`/projects/${projectId}/burndown`)
+export const listSnapshots = (projectId: string) =>
+  api.get<SnapshotItem[]>(`/projects/${projectId}/snapshots`)
+export const burndown = (projectId: string) =>
+  api.get<BurndownResponse>(`/projects/${projectId}/burndown`)
 
-export const listTemplates = () => api.get<{ templates: { name: string; items: { category: string; name: string; description?: string }[] }[] }>('/deliverable-templates')
+export const listTemplates = () =>
+  api.get<{
+    templates: { name: string; items: { category: string; name: string; description?: string }[] }[]
+  }>('/deliverable-templates')
 export const instantiateTemplate = (projectId: string, template_name: string) =>
-  api.post<{ created: number }>(`/projects/${projectId}/deliverables/instantiate`, { template_name })
+  api.post<{ created: number }>(`/projects/${projectId}/deliverables/instantiate`, {
+    template_name,
+  })
 
 export const listDeliverables = (projectId: string, params: Record<string, unknown> = {}) =>
   api.get<DeliverableItem[]>(`/projects/${projectId}/deliverables${qs(params)}`)
@@ -72,11 +80,16 @@ export const listAttachments = (deliverableId: string) =>
   api.get<AttachmentItem[]>(`/deliverables/${deliverableId}/attachments`)
 /** 按项目一次性拉取全部交付资料附件（列表页展示「附件(n)」徽标，避免逐行请求） */
 export const listProjectAttachments = (projectId: string) =>
-  api.get<{ attachments: ProjectAttachmentItem[] }>(`/projects/${projectId}/deliverables/attachments`)
+  api.get<{ attachments: ProjectAttachmentItem[] }>(
+    `/projects/${projectId}/deliverables/attachments`,
+  )
 export const uploadAttachment = async (deliverableId: string, file: File) => {
   const form = new FormData()
   form.append('file', file)
-  const resp = await fetch(`/api/deliverables/${deliverableId}/attachments`, { method: 'POST', body: form })
+  const resp = await fetch(`/api/deliverables/${deliverableId}/attachments`, {
+    method: 'POST',
+    body: form,
+  })
   const body = await resp.json().catch(() => null)
   if (!resp.ok) throw new Error(body?.error?.message ?? `上传失败（${resp.status}）`)
   return body
@@ -85,11 +98,15 @@ export const uploadAttachment = async (deliverableId: string, file: File) => {
 export const attachmentDownloadUrl = (id: string, inline = false) =>
   `/api/attachments/${id}/download${inline ? '?inline=1' : ''}`
 export const deleteAttachment = (id: string) => api.delete(`/attachments/${id}`)
-export const deliverableExportUrl = (projectId: string) => `/api/projects/${projectId}/deliverables/export`
+export const deliverableExportUrl = (projectId: string) =>
+  `/api/projects/${projectId}/deliverables/export`
 export const importDeliverables = async (projectId: string, file: File) => {
   const form = new FormData()
   form.append('file', file)
-  const resp = await fetch(`/api/projects/${projectId}/deliverables/import`, { method: 'POST', body: form })
+  const resp = await fetch(`/api/projects/${projectId}/deliverables/import`, {
+    method: 'POST',
+    body: form,
+  })
   const body = await resp.json().catch(() => null)
   if (!resp.ok) throw new Error(body?.error?.message ?? `导入失败（${resp.status}）`)
   return body as { created: number; errors: { row: number; message: string }[] }
@@ -100,7 +117,10 @@ export const weeklyText = (projectId: string) =>
 export const reportExportUrl = (projectId: string, type: 'weekly' | 'final') =>
   `/api/projects/${projectId}/reports/${type}/export`
 export const deliverableCheck = (projectId: string) =>
-  api.post<{ content: string; model: string; usage: number }>(`/ai/projects/${projectId}/deliverable-check`, {})
+  api.post<{ content: string; model: string; usage: number }>(
+    `/ai/projects/${projectId}/deliverable-check`,
+    {},
+  )
 
 function qs(params: Record<string, unknown>): string {
   const search = new URLSearchParams()

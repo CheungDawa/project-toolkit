@@ -1,9 +1,4 @@
-import {
-  CalendarOutlined,
-  EditOutlined,
-  SearchOutlined,
-  UserOutlined,
-} from '@ant-design/icons'
+import { CalendarOutlined, EditOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons'
 import {
   App,
   Button,
@@ -31,7 +26,7 @@ const COLUMNS = [
   { key: '已暂停', color: '#f59e0b', bg: '#fffbeb' },
 ]
 
-const STATUS_OPTIONS = COLUMNS.map((c) => ({ value: c.key, label: c.key }))
+const STATUS_OPTIONS = COLUMNS.map(c => ({ value: c.key, label: c.key }))
 
 interface DragState {
   taskId: string
@@ -68,8 +63,8 @@ export default function KanbanPage() {
     try {
       const data = await listTasks(projectId)
       // 看板只显示叶子任务（父任务是汇总，拖拽无意义）
-      const parentIds = new Set(data.items.filter((t) => t.parent_id).map((t) => t.parent_id))
-      setTasks(data.items.filter((t) => !parentIds.has(t.id)))
+      const parentIds = new Set(data.items.filter(t => t.parent_id).map(t => t.parent_id))
+      setTasks(data.items.filter(t => !parentIds.has(t.id)))
     } catch (err) {
       message.error(err instanceof Error ? err.message : '加载任务失败')
     } finally {
@@ -84,8 +79,16 @@ export default function KanbanPage() {
   /** 筛选后的任务集（关键词/负责人/优先级） */
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
-    return tasks.filter((t) => {
-      if (kw && !(t.name.toLowerCase().includes(kw) || t.wbs_code.toLowerCase().includes(kw) || (t.owner ?? '').toLowerCase().includes(kw))) return false
+    return tasks.filter(t => {
+      if (
+        kw &&
+        !(
+          t.name.toLowerCase().includes(kw) ||
+          t.wbs_code.toLowerCase().includes(kw) ||
+          (t.owner ?? '').toLowerCase().includes(kw)
+        )
+      )
+        return false
       if (ownerFilter && t.owner !== ownerFilter) return false
       if (priorityFilter && t.priority !== priorityFilter) return false
       return true
@@ -94,15 +97,15 @@ export default function KanbanPage() {
 
   /** 可选负责人列表（从真实数据提取，不编造） */
   const ownerOptions = useMemo(() => {
-    const owners = [...new Set(tasks.map((t) => t.owner).filter((o): o is string => !!o))].sort()
-    return owners.map((o) => ({ value: o, label: o }))
+    const owners = [...new Set(tasks.map(t => t.owner).filter((o): o is string => !!o))].sort()
+    return owners.map(o => ({ value: o, label: o }))
   }, [tasks])
 
   const tasksByStatus = useMemo(() => {
     const map: Record<string, TaskItem[]> = {}
     for (const col of COLUMNS) map[col.key] = []
     for (const t of filtered) {
-      const key = COLUMNS.some((c) => c.key === t.status) ? t.status : '未开始'
+      const key = COLUMNS.some(c => c.key === t.status) ? t.status : '未开始'
       map[key].push(t)
     }
     return map
@@ -116,27 +119,31 @@ export default function KanbanPage() {
       setDragging(null)
       return
     }
-    const task = tasks.find((t) => t.id === dragging.taskId)
+    const task = tasks.find(t => t.id === dragging.taskId)
     setDragging(null)
     if (!task) return
     // 改动前的卡片快照：失败时只回滚这一张卡
     const snapshot = task
     const nextProgress = targetStatus === '已完成' ? Math.max(task.progress, 100) : task.progress
     // 乐观更新
-    setTasks((prev) =>
-      prev.map((t) => (t.id === snapshot.id ? { ...t, status: targetStatus, progress: nextProgress } : t)),
+    setTasks(prev =>
+      prev.map(t =>
+        t.id === snapshot.id ? { ...t, status: targetStatus, progress: nextProgress } : t,
+      ),
     )
     suppressClick.current = true
-    setTimeout(() => { suppressClick.current = false }, 250)
+    setTimeout(() => {
+      suppressClick.current = false
+    }, 250)
     try {
       const updated = await updateTask(task.id, { status: targetStatus, progress: nextProgress })
       // 成功后不再全量 fetchData：本地状态已是服务端确认的最终值，
       // 只需用响应体覆盖这一张卡（服务端可能补齐 sort_order / effective_progress）
-      setTasks((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)))
+      setTasks(prev => prev.map(t => (t.id === updated.id ? { ...t, ...updated } : t)))
       message.success(`「${task.name}」已移至 ${targetStatus}`)
     } catch (err) {
       // 失败：先用快照回滚这一张卡，再全量刷新兜底（拉取服务端真值）
-      setTasks((prev) => prev.map((t) => (t.id === snapshot.id ? snapshot : t)))
+      setTasks(prev => prev.map(t => (t.id === snapshot.id ? snapshot : t)))
       message.error(err instanceof Error ? err.message : '移动失败')
       await fetchData()
     }
@@ -155,16 +162,21 @@ export default function KanbanPage() {
     const prevStatus = detailTask.status
     const prevProgress = Math.round(detailTask.progress)
     // 改动前的卡片快照：失败时只回滚这一张卡
-    const snapshot = tasks.find((t) => t.id === detailTask.id) ?? null
+    const snapshot = tasks.find(t => t.id === detailTask.id) ?? null
     setSaving(true)
     // 乐观更新列表
-    setTasks((prev) =>
-      prev.map((t) => (t.id === detailTask.id ? { ...t, status: nextStatus, progress: nextProgress } : t)),
+    setTasks(prev =>
+      prev.map(t =>
+        t.id === detailTask.id ? { ...t, status: nextStatus, progress: nextProgress } : t,
+      ),
     )
     try {
-      const updated = await updateTask(detailTask.id, { status: nextStatus, progress: nextProgress })
+      const updated = await updateTask(detailTask.id, {
+        status: nextStatus,
+        progress: nextProgress,
+      })
       // 成功后不再全量 fetchData，用响应体覆盖这一张卡与抽屉内数据
-      setTasks((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)))
+      setTasks(prev => prev.map(t => (t.id === updated.id ? { ...t, ...updated } : t)))
       setDetailTask({ ...detailTask, ...updated })
       setDetailStatus(updated.status)
       setDetailProgress(Math.round(updated.progress))
@@ -172,7 +184,7 @@ export default function KanbanPage() {
     } catch (err) {
       // 失败：先用快照回滚这一张卡，再全量刷新兜底
       if (snapshot) {
-        setTasks((prev) => prev.map((t) => (t.id === snapshot.id ? snapshot : t)))
+        setTasks(prev => prev.map(t => (t.id === snapshot.id ? snapshot : t)))
       }
       setDetailStatus(prevStatus)
       setDetailProgress(prevProgress)
@@ -186,13 +198,28 @@ export default function KanbanPage() {
   const priorityTag = (p: string | null) => {
     if (!p) return null
     const color = p === '高' ? '#ef4444' : p === '中' ? '#e8a33d' : '#1e8449'
-    return <span style={{ display: 'inline-block', padding: '0 5px', borderRadius: 4, fontSize: 10, color: '#fff', background: color }}>{p}</span>
+    return (
+      <span
+        style={{
+          display: 'inline-block',
+          padding: '0 5px',
+          borderRadius: 4,
+          fontSize: 10,
+          color: '#fff',
+          background: color,
+        }}
+      >
+        {p}
+      </span>
+    )
   }
 
   const descItem = (label: string, content: React.ReactNode) => (
     <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
       <span style={{ width: 72, flexShrink: 0, fontSize: 12.5, color: '#8a919e' }}>{label}</span>
-      <span style={{ flex: 1, fontSize: 12.5, color: '#2c3242', wordBreak: 'break-all' }}>{content}</span>
+      <span style={{ flex: 1, fontSize: 12.5, color: '#2c3242', wordBreak: 'break-all' }}>
+        {content}
+      </span>
     </div>
   )
 
@@ -217,7 +244,7 @@ export default function KanbanPage() {
           prefix={<SearchOutlined style={{ color: '#b3bac5' }} />}
           placeholder="搜索任务名称 / WBS 编码 / 负责人"
           value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
+          onChange={e => setKeyword(e.target.value)}
           style={{ width: 264 }}
         />
         <Select
@@ -248,18 +275,20 @@ export default function KanbanPage() {
       </div>
 
       {/* ===================== 四列看板 ===================== */}
-      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, minHeight: '56vh' }}>
-        {COLUMNS.map((col) => {
+      <div
+        style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, minHeight: '56vh' }}
+      >
+        {COLUMNS.map(col => {
           const list = tasksByStatus[col.key] ?? []
           const isHover = hoverCol === col.key
           return (
             <div
               key={col.key}
-              onDragOver={(e) => {
+              onDragOver={e => {
                 e.preventDefault()
                 setHoverCol(col.key)
               }}
-              onDragLeave={() => setHoverCol((c) => (c === col.key ? null : c))}
+              onDragLeave={() => setHoverCol(c => (c === col.key ? null : c))}
               onDrop={() => void handleDrop(col.key)}
               style={{
                 flex: '1 1 260px',
@@ -274,31 +303,64 @@ export default function KanbanPage() {
               }}
             >
               {/* 列头 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '2px 4px' }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: col.color }} />
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 10,
+                  padding: '2px 4px',
+                }}
+              >
+                <span
+                  style={{ width: 10, height: 10, borderRadius: '50%', background: col.color }}
+                />
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#1c2b36' }}>{col.key}</span>
-                <span style={{ fontSize: 12, color: '#8a9ba8', background: 'rgba(255,255,255,.8)', borderRadius: 10, padding: '0 8px' }}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: '#8a9ba8',
+                    background: 'rgba(255,255,255,.8)',
+                    borderRadius: 10,
+                    padding: '0 8px',
+                  }}
+                >
                   {list.length}
-                  {filterActive && tasks.some((t) => (t.status || '未开始') === col.key) ? `/${tasks.filter((t) => (t.status || '未开始') === col.key).length}` : ''}
+                  {filterActive && tasks.some(t => (t.status || '未开始') === col.key)
+                    ? `/${tasks.filter(t => (t.status || '未开始') === col.key).length}`
+                    : ''}
                 </span>
               </div>
 
               {/* 卡片区（可滚动） */}
-              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  maxHeight: 'calc(100vh - 200px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
                 {loading ? <Card size="small" loading style={{ borderRadius: 8 }} /> : null}
                 {!loading && list.length === 0 ? (
-                  <div style={{ textAlign: 'center', color: '#aab', fontSize: 12, padding: '24px 0' }}>
+                  <div
+                    style={{ textAlign: 'center', color: '#aab', fontSize: 12, padding: '24px 0' }}
+                  >
                     {filterActive ? '无匹配任务' : '拖任务到这里'}
                   </div>
                 ) : null}
-                {list.map((t) => (
+                {list.map(t => (
                   <div
                     key={t.id}
                     draggable
                     onDragStart={() => setDragging({ taskId: t.id, fromStatus: t.status })}
                     onDragEnd={() => {
                       suppressClick.current = true
-                      setTimeout(() => { suppressClick.current = false }, 250)
+                      setTimeout(() => {
+                        suppressClick.current = false
+                      }, 250)
                       setDragging(null)
                       setHoverCol(null)
                     }}
@@ -313,28 +375,70 @@ export default function KanbanPage() {
                       border: '1px solid #eef1f6',
                       transition: 'box-shadow .15s ease, border-color .15s ease',
                     }}
-                    onMouseEnter={(e) => {
+                    onMouseEnter={e => {
                       e.currentTarget.style.borderColor = '#c7cdff'
                       e.currentTarget.style.boxShadow = '0 3px 10px rgba(79,70,229,.12)'
                     }}
-                    onMouseLeave={(e) => {
+                    onMouseLeave={e => {
                       e.currentTarget.style.borderColor = '#eef1f6'
                       e.currentTarget.style.boxShadow = '0 1px 3px rgba(17,20,40,.08)'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 6 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'start',
+                        gap: 6,
+                      }}
+                    >
                       <div style={{ minWidth: 0 }}>
-                        <Typography.Text code style={{ fontSize: 11 }}>{t.wbs_code}</Typography.Text>
-                        <span style={{ marginLeft: 4, fontWeight: 600, fontSize: 13 }}>{t.name}</span>
+                        <Typography.Text code style={{ fontSize: 11 }}>
+                          {t.wbs_code}
+                        </Typography.Text>
+                        <span style={{ marginLeft: 4, fontWeight: 600, fontSize: 13 }}>
+                          {t.name}
+                        </span>
                       </div>
                       {priorityTag(t.priority)}
                     </div>
-                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#6b7c8c', flexWrap: 'wrap' }}>
+                    <div
+                      style={{
+                        marginTop: 6,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        fontSize: 11,
+                        color: '#6b7c8c',
+                        flexWrap: 'wrap',
+                      }}
+                    >
                       {t.owner ? <span>👤 {t.owner}</span> : null}
-                      {t.plan_start && t.plan_end ? <span>📅 {t.plan_start.slice(5)}~{t.plan_end.slice(5)}</span> : null}
+                      {t.plan_start && t.plan_end ? (
+                        <span>
+                          📅 {t.plan_start.slice(5)}~{t.plan_end.slice(5)}
+                        </span>
+                      ) : null}
                       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ width: 44, height: 5, borderRadius: 3, background: '#e5e9f0', display: 'inline-block', overflow: 'hidden' }}>
-                          <span style={{ display: 'block', height: '100%', width: `${t.effective_progress ?? t.progress}%`, background: '#4f46e5', borderRadius: 3 }} />
+                        <span
+                          style={{
+                            width: 44,
+                            height: 5,
+                            borderRadius: 3,
+                            background: '#e5e9f0',
+                            display: 'inline-block',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'block',
+                              height: '100%',
+                              width: `${t.effective_progress ?? t.progress}%`,
+                              background: '#4f46e5',
+                              borderRadius: 3,
+                            }}
+                          />
                         </span>
                         {t.effective_progress ?? t.progress}%
                       </span>
@@ -355,7 +459,9 @@ export default function KanbanPage() {
         title={
           detailTask ? (
             <Space size={8}>
-              <Typography.Text code style={{ fontSize: 12 }}>{detailTask.wbs_code}</Typography.Text>
+              <Typography.Text code style={{ fontSize: 12 }}>
+                {detailTask.wbs_code}
+              </Typography.Text>
               <span>{detailTask.name}</span>
             </Space>
           ) : (
@@ -370,23 +476,25 @@ export default function KanbanPage() {
       >
         {detailTask && (
           <div>
-            {descItem('状态', (
+            {descItem(
+              '状态',
               <Select
                 value={detailStatus}
-                onChange={(v) => {
+                onChange={v => {
                   setDetailStatus(v)
                   if (v === '已完成' && detailProgress < 100) setDetailProgress(100)
                 }}
                 options={STATUS_OPTIONS}
                 style={{ width: 140 }}
-              />
-            ))}
-            {descItem('进度', (
+              />,
+            )}
+            {descItem(
+              '进度',
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <Slider
                     value={detailProgress}
-                    onChange={(v) => setDetailProgress(v)}
+                    onChange={v => setDetailProgress(v)}
                     style={{ flex: 1, marginInline: 0 }}
                     min={0}
                     max={100}
@@ -394,12 +502,14 @@ export default function KanbanPage() {
                   />
                   <InputNumber
                     value={detailProgress}
-                    onChange={(v) => setDetailProgress(typeof v === 'number' ? Math.max(0, Math.min(100, v)) : 0)}
+                    onChange={v =>
+                      setDetailProgress(typeof v === 'number' ? Math.max(0, Math.min(100, v)) : 0)
+                    }
                     min={0}
                     max={100}
                     size="small"
-                    formatter={(v) => `${v ?? 0}%`}
-                    parser={(v) => Number((v ?? '0').replace('%', ''))}
+                    formatter={v => `${v ?? 0}%`}
+                    parser={v => Number((v ?? '0').replace('%', ''))}
                     style={{ width: 72 }}
                   />
                 </div>
@@ -407,26 +517,53 @@ export default function KanbanPage() {
                   percent={detailProgress}
                   size="small"
                   showInfo={false}
-                  strokeColor={detailProgress >= 100 ? '#10b981' : detailProgress > 0 ? '#4f46e5' : '#d6dae2'}
+                  strokeColor={
+                    detailProgress >= 100 ? '#10b981' : detailProgress > 0 ? '#4f46e5' : '#d6dae2'
+                  }
                   style={{ margin: 0, marginTop: 4 }}
                 />
-              </div>
-            ))}
+              </div>,
+            )}
             {descItem('优先级', detailTask.priority ? priorityTag(detailTask.priority) : '—')}
             {descItem(
               '负责人',
               detailTask.owner ? (
-                <span><UserOutlined style={{ marginRight: 4, color: '#8a919e' }} />{detailTask.owner}</span>
-              ) : '—',
+                <span>
+                  <UserOutlined style={{ marginRight: 4, color: '#8a919e' }} />
+                  {detailTask.owner}
+                </span>
+              ) : (
+                '—'
+              ),
             )}
-            {detailTask.collaborators?.length ? descItem('协作人', detailTask.collaborators.join('、')) : null}
-            {descItem('计划周期', detailTask.plan_start && detailTask.plan_end ? (
-              <span><CalendarOutlined style={{ marginRight: 4, color: '#8a919e' }} />{detailTask.plan_start} ~ {detailTask.plan_end}</span>
-            ) : '—')}
-            {descItem('实际周期', detailTask.actual_start ? (
-              <span>{detailTask.actual_start} ~ {detailTask.actual_end ?? '进行中'}</span>
-            ) : '—')}
-            {descItem('工时（h）', detailTask.work_hours != null ? String(detailTask.work_hours) : '—')}
+            {detailTask.collaborators?.length
+              ? descItem('协作人', detailTask.collaborators.join('、'))
+              : null}
+            {descItem(
+              '计划周期',
+              detailTask.plan_start && detailTask.plan_end ? (
+                <span>
+                  <CalendarOutlined style={{ marginRight: 4, color: '#8a919e' }} />
+                  {detailTask.plan_start} ~ {detailTask.plan_end}
+                </span>
+              ) : (
+                '—'
+              ),
+            )}
+            {descItem(
+              '实际周期',
+              detailTask.actual_start ? (
+                <span>
+                  {detailTask.actual_start} ~ {detailTask.actual_end ?? '进行中'}
+                </span>
+              ) : (
+                '—'
+              ),
+            )}
+            {descItem(
+              '工时（h）',
+              detailTask.work_hours != null ? String(detailTask.work_hours) : '—',
+            )}
             {descItem('验收标准', detailTask.acceptance_criteria || '—')}
             {descItem('交付物', detailTask.deliverable_name || '—')}
 
@@ -434,12 +571,18 @@ export default function KanbanPage() {
               <Button
                 type="primary"
                 loading={saving}
-                disabled={detailStatus === detailTask.status && detailProgress === Math.round(detailTask.progress)}
+                disabled={
+                  detailStatus === detailTask.status &&
+                  detailProgress === Math.round(detailTask.progress)
+                }
                 onClick={() => void applyDetailChange(detailStatus, detailProgress)}
               >
                 保存修改
               </Button>
-              <Button icon={<EditOutlined />} onClick={() => navigate(`/projects/${projectId}/wbs`)}>
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => navigate(`/projects/${projectId}/wbs`)}
+              >
                 去 WBS 编辑
               </Button>
             </div>

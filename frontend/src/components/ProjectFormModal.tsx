@@ -26,7 +26,12 @@ interface FormValues {
   description?: string
 }
 
-export default function ProjectFormModal({ open, project, onCancel, onSubmit }: ProjectFormModalProps) {
+export default function ProjectFormModal({
+  open,
+  project,
+  onCancel,
+  onSubmit,
+}: ProjectFormModalProps) {
   const [form] = Form.useForm<FormValues>()
 
   // 回填修复：antd initialValues 仅在 Form store 首次创建时生效一次，
@@ -115,12 +120,20 @@ export default function ProjectFormModal({ open, project, onCancel, onSubmit }: 
             <Input placeholder="负责人" />
           </Form.Item>
           <Form.Item name="status" label="状态">
-            <Select placeholder="选择状态" allowClear options={STATUS_OPTIONS.map((v) => ({ value: v, label: v }))} />
+            <Select
+              placeholder="选择状态"
+              allowClear
+              options={STATUS_OPTIONS.map(v => ({ value: v, label: v }))}
+            />
           </Form.Item>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <Form.Item name="phase" label="项目阶段">
-            <Select placeholder="选择阶段" allowClear options={PHASE_OPTIONS.map((v) => ({ value: v, label: v }))} />
+            <Select
+              placeholder="选择阶段"
+              allowClear
+              options={PHASE_OPTIONS.map(v => ({ value: v, label: v }))}
+            />
           </Form.Item>
           <Form.Item name="plan" label="计划起止日期">
             <DatePicker.RangePicker style={{ width: '100%' }} />

@@ -33,7 +33,7 @@ const CHUNK_LOAD_ERROR_PATTERNS: readonly RegExp[] = [
 /** 判断是否为（动态）模块资源加载失败，而不是页面自身的逻辑错误 */
 export function isChunkLoadError(error: Error): boolean {
   const message = error.message || ''
-  return CHUNK_LOAD_ERROR_PATTERNS.some((pattern) => pattern.test(message))
+  return CHUNK_LOAD_ERROR_PATTERNS.some(pattern => pattern.test(message))
 }
 
 /** 截断过长错误信息，保留可读前缀 */
@@ -77,7 +77,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
   /** 重试：清错误态 + bump key，让子树以全新实例重新渲染（数据会重新拉取） */
   private handleRetry = (): void => {
-    this.setState((prev) => ({ error: null, attempt: prev.attempt + 1 }))
+    this.setState(prev => ({ error: null, attempt: prev.attempt + 1 }))
   }
 
   /** 重新加载：仅在用户主动点击时刷新，不做自动刷新（避免打断操作与刷新死循环） */

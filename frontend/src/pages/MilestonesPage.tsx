@@ -1,5 +1,19 @@
 import { PlusOutlined } from '@ant-design/icons'
-import { App, Button, Card, DatePicker, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd'
+import {
+  App,
+  Button,
+  Card,
+  DatePicker,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+} from 'antd'
 import type { TableProps } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -64,17 +78,20 @@ export default function MilestonesPage() {
     setModalOpen(true)
   }
 
-  const openEdit = useCallback((m: Milestone) => {
-    setEditing(m)
-    form.setFieldsValue({
-      name: m.name,
-      plan_date: m.plan_date,
-      actual_date: m.actual_date,
-      status: m.status,
-      description: m.description,
-    })
-    setModalOpen(true)
-  }, [form])
+  const openEdit = useCallback(
+    (m: Milestone) => {
+      setEditing(m)
+      form.setFieldsValue({
+        name: m.name,
+        plan_date: m.plan_date,
+        actual_date: m.actual_date,
+        status: m.status,
+        description: m.description,
+      })
+      setModalOpen(true)
+    },
+    [form],
+  )
 
   const handleOk = async () => {
     if (!projectId) return
@@ -101,15 +118,18 @@ export default function MilestonesPage() {
     }
   }
 
-  const handleDelete = useCallback(async (m: Milestone) => {
-    try {
-      await deleteMilestone(m.id)
-      message.success('里程碑已删除')
-      await fetchData()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '删除失败')
-    }
-  }, [fetchData, message])
+  const handleDelete = useCallback(
+    async (m: Milestone) => {
+      try {
+        await deleteMilestone(m.id)
+        message.success('里程碑已删除')
+        await fetchData()
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '删除失败')
+      }
+    },
+    [fetchData, message],
+  )
 
   /** 顶部汇总：总数 / 逾期数（未完成且计划日期已过）/ 即将到期数（未完成且 7 天内到期） */
   const summary = useMemo(() => {
@@ -206,14 +226,22 @@ export default function MilestonesPage() {
           共 <b>{summary.total}</b> 个里程碑
           {summary.overdue > 0 ? (
             <>
-              ，<Typography.Text type="danger" strong> {summary.overdue} 个逾期</Typography.Text>
+              ，
+              <Typography.Text type="danger" strong>
+                {' '}
+                {summary.overdue} 个逾期
+              </Typography.Text>
             </>
           ) : (
             '，无逾期'
           )}
           {summary.upcoming > 0 ? (
             <>
-              ，<Typography.Text style={{ color: '#d97706' }} strong> {summary.upcoming} 个即将到期（7 天内）</Typography.Text>
+              ，
+              <Typography.Text style={{ color: '#d97706' }} strong>
+                {' '}
+                {summary.upcoming} 个即将到期（7 天内）
+              </Typography.Text>
             </>
           ) : null}
           {summary.noDate > 0 ? <>，{summary.noDate} 个未填计划日期</> : null}
@@ -249,7 +277,7 @@ export default function MilestonesPage() {
           <Form.Item name="status" label="状态">
             <Select
               allowClear
-              options={['计划中', '已完成', '已延期'].map((v) => ({ value: v, label: v }))}
+              options={['计划中', '已完成', '已延期'].map(v => ({ value: v, label: v }))}
             />
           </Form.Item>
           <Form.Item name="description" label="说明">
