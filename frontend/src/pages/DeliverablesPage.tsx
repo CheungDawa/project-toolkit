@@ -21,7 +21,8 @@ import {
   Typography,
   Upload,
 } from 'antd'
-import { useCallback, useEffect, useState } from 'react'
+import type { TableProps } from 'antd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import type { AttachmentItem, DeliverableItem } from '../api/stage5'
@@ -119,7 +120,7 @@ export default function DeliverablesPage() {
     setModalOpen(true)
   }
 
-  const openEdit = (item: DeliverableItem) => {
+  const openEdit = useCallback((item: DeliverableItem) => {
     setEditing(item)
     form.setFieldsValue({
       category: item.category,
@@ -131,7 +132,7 @@ export default function DeliverablesPage() {
       note: item.note,
     })
     setModalOpen(true)
-  }
+  }, [form])
 
   const handleOk = async () => {
     if (!projectId) return
@@ -151,7 +152,7 @@ export default function DeliverablesPage() {
     }
   }
 
-  const handleDelete = async (item: DeliverableItem) => {
+  const handleDelete = useCallback(async (item: DeliverableItem) => {
     try {
       await deleteDeliverable(item.id)
       message.success('已删除')
@@ -159,9 +160,9 @@ export default function DeliverablesPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败')
     }
-  }
+  }, [fetchData, message])
 
-  const handleUpload = async (item: DeliverableItem, file: File) => {
+  const handleUpload = useCallback(async (item: DeliverableItem, file: File) => {
     try {
       await uploadAttachment(item.id, file)
       await refreshAttachments(item.id)
@@ -170,9 +171,9 @@ export default function DeliverablesPage() {
       message.error(err instanceof Error ? err.message : '上传失败')
     }
     return false
-  }
+  }, [refreshAttachments, message])
 
-  const handleDeleteAttachment = async (deliverableId: string, attachmentId: string) => {
+  const handleDeleteAttachment = useCallback(async (deliverableId: string, attachmentId: string) => {
     try {
       await deleteAttachment(attachmentId)
       await refreshAttachments(deliverableId)
@@ -180,10 +181,10 @@ export default function DeliverablesPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除附件失败')
     }
-  }
+  }, [refreshAttachments, message])
 
   /** 展开行：附件清单（文件名/大小/下载/预览/删除/继续上传） */
-  const renderAttachments = (item: DeliverableItem) => {
+  const renderAttachments = useCallback((item: DeliverableItem) => {
     const rows = attachments[item.id] ?? []
     return (
       <div style={{ padding: '4px 8px 8px' }}>
@@ -254,7 +255,7 @@ export default function DeliverablesPage() {
         />
       </div>
     )
-  }
+  }, [attachments, handleDeleteAttachment, handleUpload])
 
   const handleImport = async (file: File) => {
     if (!projectId) return false
@@ -270,6 +271,62 @@ export default function DeliverablesPage() {
     }
     return false
   }
+
+  /** 主表列定义：依赖附件分组（附件数）与已稳定的回调，memo 后引用仅在附件变化时更新 */
+  const columns: TableProps<DeliverableItem>['columns'] = useMemo(
+    () => [
+      { title: '类别', dataIndex: 'category', width: 100, render: (v: string | null) => (v ? <Tag>{v}</Tag> : '-') },
+      { title: '资料名称', dataIndex: 'name', width: 200 },
+      { title: '责任人', dataIndex: 'owner', width: 90, render: (v: string | null) => v ?? '-' },
+      { title: '计划完成', dataIndex: 'plan_date', width: 110, render: (v: string | null) => v ?? '-' },
+      {
+        title: '提交状态',
+        dataIndex: 'submit_status',
+        width: 100,
+        render: (v: string) => <Tag color={v === '已提交' ? 'blue' : 'default'}>{v}</Tag>,
+      },
+      {
+        title: '审核状态',
+        dataIndex: 'review_status',
+        width: 100,
+        render: (v: string) => <Tag color={v === '已通过' ? 'green' : v === '已驳回' ? 'red' : 'default'}>{v}</Tag>,
+      },
+      { title: '备注', dataIndex: 'note', render: (v: string | null) => v ?? '-' },
+      {
+        title: '附件',
+        key: 'attachment_count',
+        width: 90,
+        render: (_: unknown, r) => {
+          const count = (attachments[r.id] ?? []).length
+          return <Tag color={count ? 'blue' : 'default'}>附件 {count}</Tag>
+        },
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 180,
+        fixed: 'right',
+        render: (_: unknown, r) => (
+          <Space size={4} wrap={false}>
+            <Upload showUploadList={false} beforeUpload={(file) => handleUpload(r, file)}>
+              <Button size="small" type="link">上传</Button>
+            </Upload>
+            <Button size="small" onClick={() => openEdit(r)}>编辑</Button>
+            <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(r)}>
+              <Button size="small" danger>删除</Button>
+            </Popconfirm>
+          </Space>
+        ),
+      },
+    ],
+    [attachments, handleDelete, handleUpload, openEdit],
+  )
+
+  /** 展开行配置：稳定对象引用，避免每次渲染都新建 expandable 导致展开行重挂载 */
+  const expandable = useMemo<TableProps<DeliverableItem>['expandable']>(
+    () => ({ expandedRowRender: renderAttachments }),
+    [renderAttachments],
+  )
 
   return (
     <div>
@@ -309,52 +366,8 @@ export default function DeliverablesPage() {
           dataSource={items}
           pagination={false}
           scroll={{ x: 1000 }}
-          expandable={{ expandedRowRender: renderAttachments }}
-          columns={[
-            { title: '类别', dataIndex: 'category', width: 100, render: (v: string | null) => (v ? <Tag>{v}</Tag> : '-') },
-            { title: '资料名称', dataIndex: 'name', width: 200 },
-            { title: '责任人', dataIndex: 'owner', width: 90, render: (v: string | null) => v ?? '-' },
-            { title: '计划完成', dataIndex: 'plan_date', width: 110, render: (v: string | null) => v ?? '-' },
-            {
-              title: '提交状态',
-              dataIndex: 'submit_status',
-              width: 100,
-              render: (v: string) => <Tag color={v === '已提交' ? 'blue' : 'default'}>{v}</Tag>,
-            },
-            {
-              title: '审核状态',
-              dataIndex: 'review_status',
-              width: 100,
-              render: (v: string) => <Tag color={v === '已通过' ? 'green' : v === '已驳回' ? 'red' : 'default'}>{v}</Tag>,
-            },
-            { title: '备注', dataIndex: 'note', render: (v: string | null) => v ?? '-' },
-            {
-              title: '附件',
-              key: 'attachment_count',
-              width: 90,
-              render: (_: unknown, r) => {
-                const count = (attachments[r.id] ?? []).length
-                return <Tag color={count ? 'blue' : 'default'}>附件 {count}</Tag>
-              },
-            },
-            {
-              title: '操作',
-              key: 'actions',
-              width: 180,
-              fixed: 'right',
-              render: (_: unknown, r) => (
-                <Space size={4} wrap={false}>
-                  <Upload showUploadList={false} beforeUpload={(file) => handleUpload(r, file)}>
-                    <Button size="small" type="link">上传</Button>
-                  </Upload>
-                  <Button size="small" onClick={() => openEdit(r)}>编辑</Button>
-                  <Popconfirm title="确认删除？" onConfirm={() => void handleDelete(r)}>
-                    <Button size="small" danger>删除</Button>
-                  </Popconfirm>
-                </Space>
-              ),
-            },
-          ]}
+          expandable={expandable}
+          columns={columns}
         />
       </Card>
 

@@ -1,8 +1,25 @@
 import { App, Card, Table, Tag, Typography } from 'antd'
+import type { TableProps } from 'antd'
 import { useEffect, useState } from 'react'
 
 import { listSettings } from '../api/settings'
 import type { Setting } from '../api/settings'
+
+/** 列定义不读取任何组件状态，提到模块级：渲染间引用恒定，antd 不会重建表头/列宽 */
+const COLUMNS: TableProps<Setting>['columns'] = [
+  { title: '配置键', dataIndex: 'key', width: 260, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+  {
+    title: '当前值',
+    dataIndex: 'value',
+    render: (v: unknown) => (
+      <Typography.Text code>
+        {typeof v === 'object' ? JSON.stringify(v) : String(v ?? '(未配置)')}
+      </Typography.Text>
+    ),
+  },
+  { title: '说明', dataIndex: 'description', render: (v: string | null) => v ?? '-' },
+  { title: '更新时间', dataIndex: 'updated_at', width: 180, render: (v: string) => v.slice(0, 19).replace('T', ' ') },
+]
 
 export default function SettingsPage() {
   const { message } = App.useApp()
@@ -35,20 +52,7 @@ export default function SettingsPage() {
           loading={loading}
           dataSource={settings}
           pagination={false}
-          columns={[
-            { title: '配置键', dataIndex: 'key', width: 260, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
-            {
-              title: '当前值',
-              dataIndex: 'value',
-              render: (v: unknown) => (
-                <Typography.Text code>
-                  {typeof v === 'object' ? JSON.stringify(v) : String(v ?? '(未配置)')}
-                </Typography.Text>
-              ),
-            },
-            { title: '说明', dataIndex: 'description', render: (v: string | null) => v ?? '-' },
-            { title: '更新时间', dataIndex: 'updated_at', width: 180, render: (v: string) => v.slice(0, 19).replace('T', ' ') },
-          ]}
+          columns={COLUMNS}
         />
         <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
           <Tag color="blue">提示</Tag>

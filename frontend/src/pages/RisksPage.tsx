@@ -16,7 +16,8 @@ import {
   Tag,
   Tooltip,
 } from 'antd'
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import type { TableProps } from 'antd'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import type { RiskItem } from '../api/stage3'
@@ -50,6 +51,28 @@ function levelOf(probability: number, impact: number): string {
   if (score <= 9) return '中'
   return '高'
 }
+
+/** 评估历史表列定义不读取任何组件状态，提到模块级：渲染间引用恒定 */
+const HISTORY_COLUMNS: TableProps<Record<string, unknown>>['columns'] = [
+  {
+    title: '评分',
+    key: 'score',
+    render: (_: unknown, r) => `${r.probability}×${r.impact} = ${r.score}`,
+  },
+  {
+    title: '等级',
+    dataIndex: 'level',
+    width: 70,
+    render: (v: string) => (v ? <Tag color={LEVEL_COLORS[v]}>{v}</Tag> : '-'),
+  },
+  {
+    title: '时间',
+    dataIndex: 'assessed_at',
+    width: 170,
+    render: (v: string) => v.slice(0, 16).replace('T', ' '),
+  },
+  { title: '依据', dataIndex: 'basis', render: (v: string | null) => v ?? '-' },
+]
 
 interface RiskMatrixOverviewProps {
   risks: RiskItem[]
@@ -183,7 +206,7 @@ export default function RisksPage() {
     setModalOpen(true)
   }
 
-  const openEdit = (risk: RiskItem) => {
+  const openEdit = useCallback((risk: RiskItem) => {
     setEditing(risk)
     form.setFieldsValue({
       category: risk.category,
@@ -199,7 +222,7 @@ export default function RisksPage() {
       status: risk.status,
     })
     setModalOpen(true)
-  }
+  }, [form])
 
   const handleOk = async () => {
     if (!projectId) return
@@ -220,7 +243,7 @@ export default function RisksPage() {
     }
   }
 
-  const handleArchive = async (risk: RiskItem) => {
+  const handleArchive = useCallback(async (risk: RiskItem) => {
     try {
       await archiveRisk(risk.id)
       message.success('风险已归档')
@@ -228,13 +251,13 @@ export default function RisksPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '归档失败')
     }
-  }
+  }, [fetchData, message])
 
-  const openAssessments = async (risk: RiskItem) => {
+  const openAssessments = useCallback(async (risk: RiskItem) => {
     setAssessmentOpen(risk)
     assessForm.setFieldsValue({ probability: risk.probability, impact: risk.impact, basis: '' })
     setHistory(await listAssessments(risk.id))
-  }
+  }, [assessForm])
 
   const handleAddAssessment = async () => {
     if (!assessmentOpen) return
@@ -251,14 +274,14 @@ export default function RisksPage() {
   }
 
   /** 打开转化弹窗：默认任务名取风险描述、负责人取风险责任人 */
-  const openConvert = (risk: RiskItem, target: 'issue' | 'task') => {
+  const openConvert = useCallback((risk: RiskItem, target: 'issue' | 'task') => {
     setConvertOpen(risk)
     convertForm.setFieldsValue({
       target,
       task_name: risk.description.slice(0, 50),
       task_owner: risk.owner ?? '',
     })
-  }
+  }, [convertForm])
 
   const handleConvert = async () => {
     if (!convertOpen) return
@@ -287,6 +310,99 @@ export default function RisksPage() {
       message.error(err instanceof Error ? err.message : '转化失败')
     }
   }
+
+  /** 风险表列定义：依赖的 4 个打开/归档回调均已稳定（useCallback），memo 后引用恒定 */
+  const columns: TableProps<RiskItem>['columns'] = useMemo(
+    () => [
+      {
+        title: '类别',
+        dataIndex: 'category',
+        width: 90,
+        render: (v: string | null) => v ?? '-',
+      },
+      { title: '描述', dataIndex: 'description', width: 280 },
+      {
+        title: '评分',
+        key: 'score',
+        width: 120,
+        render: (_: unknown, r) => (
+          <span>
+            {r.probability}×{r.impact} = <b>{r.score}</b>{' '}
+            <Tag color={LEVEL_COLORS[r.level ?? '中']}>{r.level}</Tag>
+          </span>
+        ),
+      },
+      {
+        title: '责任人',
+        dataIndex: 'owner',
+        width: 90,
+        render: (v: string | null) => v ?? '-',
+      },
+      { title: '状态', dataIndex: 'status', width: 100 },
+      {
+        title: '剩余风险',
+        dataIndex: 'residual_level',
+        width: 90,
+        render: (v: string | null) => v ?? '-',
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 300,
+        render: (_: unknown, r) => {
+          const converted = CLOSED_STATUSES.includes(r.status)
+          return (
+            <Space size="small" wrap>
+              <Button size="small" onClick={() => openEdit(r)}>
+                编辑
+              </Button>
+              <Button size="small" onClick={() => void openAssessments(r)}>
+                评估
+              </Button>
+              <Tooltip
+                title={
+                  converted
+                    ? '该风险已终结，不可重复转化'
+                    : '生成一条问题，原风险保留并标记「已转问题」'
+                }
+              >
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  disabled={converted}
+                  onClick={() => openConvert(r, 'issue')}
+                >
+                  转问题
+                </Button>
+              </Tooltip>
+              <Tooltip
+                title={
+                  converted
+                    ? '该风险已终结，不可重复转化'
+                    : '在任务计划生成行动任务，原风险保留并标记「已转任务」'
+                }
+              >
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  disabled={converted}
+                  onClick={() => openConvert(r, 'task')}
+                >
+                  转任务
+                </Button>
+              </Tooltip>
+              <Popconfirm title="确认归档该风险？" onConfirm={() => void handleArchive(r)}>
+                <Button size="small">归档</Button>
+              </Popconfirm>
+            </Space>
+          )
+        },
+      },
+    ],
+    [handleArchive, openAssessments, openConvert, openEdit],
+  )
 
   return (
     <div>
@@ -364,94 +480,7 @@ export default function RisksPage() {
           pagination={false}
           size="small"
           scroll={{ x: 1100 }}
-          columns={[
-            {
-              title: '类别',
-              dataIndex: 'category',
-              width: 90,
-              render: (v: string | null) => v ?? '-',
-            },
-            { title: '描述', dataIndex: 'description', width: 280 },
-            {
-              title: '评分',
-              key: 'score',
-              width: 120,
-              render: (_: unknown, r) => (
-                <span>
-                  {r.probability}×{r.impact} = <b>{r.score}</b>{' '}
-                  <Tag color={LEVEL_COLORS[r.level ?? '中']}>{r.level}</Tag>
-                </span>
-              ),
-            },
-            {
-              title: '责任人',
-              dataIndex: 'owner',
-              width: 90,
-              render: (v: string | null) => v ?? '-',
-            },
-            { title: '状态', dataIndex: 'status', width: 100 },
-            {
-              title: '剩余风险',
-              dataIndex: 'residual_level',
-              width: 90,
-              render: (v: string | null) => v ?? '-',
-            },
-            {
-              title: '操作',
-              key: 'actions',
-              width: 300,
-              render: (_: unknown, r) => {
-                const converted = CLOSED_STATUSES.includes(r.status)
-                return (
-                  <Space size="small" wrap>
-                    <Button size="small" onClick={() => openEdit(r)}>
-                      编辑
-                    </Button>
-                    <Button size="small" onClick={() => void openAssessments(r)}>
-                      评估
-                    </Button>
-                    <Tooltip
-                      title={
-                        converted
-                          ? '该风险已终结，不可重复转化'
-                          : '生成一条问题，原风险保留并标记「已转问题」'
-                      }
-                    >
-                      <Button
-                        size="small"
-                        type="primary"
-                        ghost
-                        disabled={converted}
-                        onClick={() => openConvert(r, 'issue')}
-                      >
-                        转问题
-                      </Button>
-                    </Tooltip>
-                    <Tooltip
-                      title={
-                        converted
-                          ? '该风险已终结，不可重复转化'
-                          : '在任务计划生成行动任务，原风险保留并标记「已转任务」'
-                      }
-                    >
-                      <Button
-                        size="small"
-                        type="primary"
-                        ghost
-                        disabled={converted}
-                        onClick={() => openConvert(r, 'task')}
-                      >
-                        转任务
-                      </Button>
-                    </Tooltip>
-                    <Popconfirm title="确认归档该风险？" onConfirm={() => void handleArchive(r)}>
-                      <Button size="small">归档</Button>
-                    </Popconfirm>
-                  </Space>
-                )
-              },
-            },
-          ]}
+          columns={columns}
         />
       </Card>
 
@@ -529,26 +558,7 @@ export default function RisksPage() {
           size="small"
           dataSource={history as Record<string, unknown>[]}
           pagination={false}
-          columns={[
-            {
-              title: '评分',
-              key: 'score',
-              render: (_: unknown, r) => `${r.probability}×${r.impact} = ${r.score}`,
-            },
-            {
-              title: '等级',
-              dataIndex: 'level',
-              width: 70,
-              render: (v: string) => (v ? <Tag color={LEVEL_COLORS[v]}>{v}</Tag> : '-'),
-            },
-            {
-              title: '时间',
-              dataIndex: 'assessed_at',
-              width: 170,
-              render: (v: string) => v.slice(0, 16).replace('T', ' '),
-            },
-            { title: '依据', dataIndex: 'basis', render: (v: string | null) => v ?? '-' },
-          ]}
+          columns={HISTORY_COLUMNS}
         />
         <div style={{ marginTop: 16 }}>
           <Form form={assessForm} layout="vertical">

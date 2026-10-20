@@ -1,5 +1,6 @@
 import { SaveOutlined } from '@ant-design/icons'
 import { App, Button, Card, Drawer, Form, Input, Space, Table, Tag, Typography } from 'antd'
+import type { TableProps } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -51,6 +52,11 @@ function deviationOf(
   return { days: daysBetween(baselineEnd, reference), estimated: !actualEnd }
 }
 
+/** 偏差天数展示：正数带 + 号 */
+function formatDays(days: number): string {
+  return days > 0 ? `+${days}` : String(days)
+}
+
 export default function BaselinesPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const { message } = App.useApp()
@@ -93,7 +99,7 @@ export default function BaselinesPage() {
     }
   }
 
-  const handleDiff = async (baseline: Baseline) => {
+  const handleDiff = useCallback(async (baseline: Baseline) => {
     if (!projectId) return
     try {
       // 同时拉取任务列表补齐 actual_end（失败不阻断对比，仅降级为按今天估算）
@@ -114,7 +120,7 @@ export default function BaselinesPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '对比失败')
     }
-  }
+  }, [projectId, message])
 
   const changedCount = diffRows.filter((r) => r.changed).length
 
@@ -136,7 +142,92 @@ export default function BaselinesPage() {
     return { total, ahead, delayed, comparable }
   }, [diffRows, taskActualMap])
 
-  const formatDays = (days: number): string => (days > 0 ? `+${days}` : String(days))
+  /** 基线列表列定义：仅依赖已稳定的 handleDiff，memo 后引用恒定 */
+  const baselineColumns: TableProps<Baseline>['columns'] = useMemo(
+    () => [
+      { title: '基线名称', dataIndex: 'name' },
+      { title: '版本', dataIndex: 'version', width: 80, render: (v: number) => <Tag>v{v}</Tag> },
+      { title: '冻结时间', dataIndex: 'frozen_at', width: 190, render: (v: string) => v.replace('T', ' ').slice(0, 19) },
+      { title: '说明', dataIndex: 'note', render: (v: string | null) => v ?? '-' },
+      {
+        title: '操作',
+        width: 120,
+        render: (_: unknown, record) => (
+          <Button size="small" onClick={() => void handleDiff(record)}>
+            与当前计划对比
+          </Button>
+        ),
+      },
+    ],
+    [handleDiff],
+  )
+
+  /** 对比表列定义：偏差列需要 taskActualMap 补齐实际完成日期，故依赖它 */
+  const diffColumns: TableProps<BaselineDiffRow>['columns'] = useMemo(
+    () => [
+      { title: 'WBS', dataIndex: 'wbs_code', width: 80, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+      { title: '任务', dataIndex: 'name', width: 200 },
+      {
+        title: '基线计划起止',
+        key: 'baseline',
+        width: 180,
+        render: (_: unknown, r) => {
+          const b = r.baseline as Record<string, string | null>
+          return b.plan_start && b.plan_end ? `${b.plan_start} ~ ${b.plan_end}` : '-'
+        },
+      },
+      {
+        title: '当前计划起止',
+        key: 'current',
+        width: 180,
+        render: (_: unknown, r) => {
+          const c = r.current as Record<string, string | null>
+          if (c.deleted) return <Tag color="red">已删除</Tag>
+          return c.plan_start && c.plan_end ? `${c.plan_start} ~ ${c.plan_end}` : '-'
+        },
+      },
+      {
+        title: '偏差天数',
+        key: 'deviation',
+        width: 140,
+        render: (_: unknown, r) => {
+          const dev = deviationOf(r, localToday(), taskActualMap)
+          if (!dev) return <span style={{ color: '#c3c9d4' }}>—</span>
+          const color = dev.days > 0 ? '#dc2626' : dev.days < 0 ? '#059669' : '#5b6575'
+          const text = dev.days === 0 ? '0' : `${formatDays(dev.days)} 天`
+          return (
+            <Space size={4}>
+              <span style={{ color, fontWeight: 700 }}>{text}</span>
+              {dev.estimated ? <Tag style={{ fontSize: 10, marginInlineEnd: 0 }}>按今天估算</Tag> : null}
+            </Space>
+          )
+        },
+      },
+      {
+        title: '基线进度',
+        key: 'bprog',
+        width: 90,
+        render: (_: unknown, r) => `${(r.baseline as { progress?: number }).progress ?? '-'}%`,
+      },
+      {
+        title: '当前进度',
+        key: 'cprog',
+        width: 90,
+        render: (_: unknown, r) =>
+          (r.current as { deleted?: boolean; progress?: number }).deleted
+            ? '-'
+            : `${(r.current as { progress?: number }).progress ?? '-'}%`,
+      },
+      {
+        title: '状态',
+        key: 'changed',
+        width: 90,
+        render: (_: unknown, r) =>
+          r.changed ? <Tag color="orange">已变化</Tag> : <Tag color="green">一致</Tag>,
+      },
+    ],
+    [taskActualMap],
+  )
 
   return (
     <div>
@@ -160,21 +251,7 @@ export default function BaselinesPage() {
           loading={loading}
           dataSource={baselines}
           pagination={false}
-          columns={[
-            { title: '基线名称', dataIndex: 'name' },
-            { title: '版本', dataIndex: 'version', width: 80, render: (v: number) => <Tag>v{v}</Tag> },
-            { title: '冻结时间', dataIndex: 'frozen_at', width: 190, render: (v: string) => v.replace('T', ' ').slice(0, 19) },
-            { title: '说明', dataIndex: 'note', render: (v: string | null) => v ?? '-' },
-            {
-              title: '操作',
-              width: 120,
-              render: (_: unknown, record) => (
-                <Button size="small" onClick={() => void handleDiff(record)}>
-                  与当前计划对比
-                </Button>
-              ),
-            },
-          ]}
+          columns={baselineColumns}
         />
       </Card>
 
@@ -204,68 +281,7 @@ export default function BaselinesPage() {
           dataSource={diffRows}
           pagination={false}
           scroll={{ x: 900 }}
-          columns={[
-            { title: 'WBS', dataIndex: 'wbs_code', width: 80, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
-            { title: '任务', dataIndex: 'name', width: 200 },
-            {
-              title: '基线计划起止',
-              key: 'baseline',
-              width: 180,
-              render: (_: unknown, r) => {
-                const b = r.baseline as Record<string, string | null>
-                return b.plan_start && b.plan_end ? `${b.plan_start} ~ ${b.plan_end}` : '-'
-              },
-            },
-            {
-              title: '当前计划起止',
-              key: 'current',
-              width: 180,
-              render: (_: unknown, r) => {
-                const c = r.current as Record<string, string | null>
-                if (c.deleted) return <Tag color="red">已删除</Tag>
-                return c.plan_start && c.plan_end ? `${c.plan_start} ~ ${c.plan_end}` : '-'
-              },
-            },
-            {
-              title: '偏差天数',
-              key: 'deviation',
-              width: 140,
-              render: (_: unknown, r) => {
-                const dev = deviationOf(r, localToday(), taskActualMap)
-                if (!dev) return <span style={{ color: '#c3c9d4' }}>—</span>
-                const color = dev.days > 0 ? '#dc2626' : dev.days < 0 ? '#059669' : '#5b6575'
-                const text = dev.days === 0 ? '0' : `${formatDays(dev.days)} 天`
-                return (
-                  <Space size={4}>
-                    <span style={{ color, fontWeight: 700 }}>{text}</span>
-                    {dev.estimated ? <Tag style={{ fontSize: 10, marginInlineEnd: 0 }}>按今天估算</Tag> : null}
-                  </Space>
-                )
-              },
-            },
-            {
-              title: '基线进度',
-              key: 'bprog',
-              width: 90,
-              render: (_: unknown, r) => `${(r.baseline as { progress?: number }).progress ?? '-'}%`,
-            },
-            {
-              title: '当前进度',
-              key: 'cprog',
-              width: 90,
-              render: (_: unknown, r) =>
-                (r.current as { deleted?: boolean; progress?: number }).deleted
-                  ? '-'
-                  : `${(r.current as { progress?: number }).progress ?? '-'}%`,
-            },
-            {
-              title: '状态',
-              key: 'changed',
-              width: 90,
-              render: (_: unknown, r) =>
-                r.changed ? <Tag color="orange">已变化</Tag> : <Tag color="green">一致</Tag>,
-            },
-          ]}
+          columns={diffColumns}
         />
       </Drawer>
     </div>

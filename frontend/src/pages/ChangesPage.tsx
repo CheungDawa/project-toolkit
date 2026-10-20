@@ -14,7 +14,8 @@ import {
   Tag,
   Tooltip,
 } from 'antd'
-import { useCallback, useEffect, useState } from 'react'
+import type { TableProps } from 'antd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import type { Baseline, BaselineDiffRow } from '../api/stage2'
@@ -55,6 +56,37 @@ function changedKeys(row: BaselineDiffRow): string[] {
     key => JSON.stringify(row.baseline[key]) !== JSON.stringify(row.current?.[key]),
   )
 }
+
+/** 基线比对表列定义不读取任何组件状态，提到模块级：渲染间引用恒定 */
+const DIFF_COLUMNS: TableProps<BaselineDiffRow>['columns'] = [
+  { title: 'WBS', dataIndex: 'wbs_code', width: 90 },
+  { title: '任务名称', dataIndex: 'name', width: 200 },
+  {
+    title: '差异',
+    key: 'changed',
+    width: 90,
+    render: (_: unknown, r) =>
+      r.changed ? <Tag color="orange">有变化</Tag> : <Tag>无变化</Tag>,
+  },
+  {
+    title: '基线值 → 当前值',
+    key: 'detail',
+    render: (_: unknown, r) => {
+      const keys = changedKeys(r)
+      if (keys.length === 0) return '-'
+      return (
+        <div>
+          {keys.map(key => (
+            <div key={key}>
+              {key}：{String(r.baseline?.[key] ?? '-')} →{' '}
+              {String(r.current?.[key] ?? '-')}
+            </div>
+          ))}
+        </div>
+      )
+    },
+  },
+]
 
 export default function ChangesPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -104,7 +136,7 @@ export default function ChangesPage() {
     setModalOpen(true)
   }
 
-  const openEdit = (item: ChangeItem) => {
+  const openEdit = useCallback((item: ChangeItem) => {
     setEditing(item)
     form.setFieldsValue({
       title: item.title,
@@ -117,7 +149,7 @@ export default function ChangesPage() {
       requested_by: item.requested_by,
     })
     setModalOpen(true)
-  }
+  }, [form])
 
   const handleOk = async () => {
     if (!projectId) return
@@ -140,7 +172,7 @@ export default function ChangesPage() {
     }
   }
 
-  const handleDelete = async (item: ChangeItem) => {
+  const handleDelete = useCallback(async (item: ChangeItem) => {
     try {
       await deleteChange(item.id)
       message.success('变更已删除')
@@ -148,10 +180,10 @@ export default function ChangesPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败')
     }
-  }
+  }, [fetchData, message])
 
   /** 审批通过后拍基线：冻结当前计划快照，供后续比对 */
-  const handleSnapshot = async (item: ChangeItem) => {
+  const handleSnapshot = useCallback(async (item: ChangeItem) => {
     if (!projectId) return
     setSnapshotId(item.id)
     try {
@@ -168,10 +200,10 @@ export default function ChangesPage() {
     } finally {
       setSnapshotId(null)
     }
-  }
+  }, [projectId, loadBaselines, message])
 
   /** 打开基线比对：查看变更后当前计划与该基线的差异 */
-  const openDiff = async (baseline: Baseline) => {
+  const openDiff = useCallback(async (baseline: Baseline) => {
     if (!projectId) return
     setDiffOpen(baseline)
     setDiffRows([])
@@ -183,7 +215,101 @@ export default function ChangesPage() {
     } finally {
       setDiffLoading(false)
     }
-  }
+  }, [projectId, message])
+
+  /** 变更列表列定义：依赖的 baselines/snapshotId 与回调均已稳定或低频，memo 避免每次渲染重建 */
+  const columns: TableProps<ChangeItem>['columns'] = useMemo(
+    () => [
+      { title: '变更内容', dataIndex: 'title', width: 200 },
+      { title: '原因', dataIndex: 'origin', render: (v: string | null) => v ?? '-' },
+      {
+        title: '范围影响',
+        dataIndex: 'scope_impact',
+        width: 160,
+        render: (v: string | null) => v ?? '-',
+      },
+      {
+        title: '工期影响',
+        dataIndex: 'schedule_impact',
+        width: 140,
+        render: (v: string | null) => v ?? '-',
+      },
+      {
+        title: '审批状态',
+        dataIndex: 'approval_status',
+        width: 110,
+        render: (v: string) => <Tag color={APPROVAL_TAG[v] ?? 'default'}>{v}</Tag>,
+      },
+      {
+        title: '关联基线',
+        key: 'baseline',
+        width: 200,
+        render: (_: unknown, r) => {
+          const linked = matchBaselines(r, baselines)
+          if (linked.length === 0) return <span style={{ color: '#bfbfbf' }}>-</span>
+          return (
+            <Space size={4} wrap>
+              {linked.map(b => (
+                <Tag
+                  key={b.id}
+                  color="blue"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => void openDiff(b)}
+                >
+                  {b.name} v{b.version}
+                </Tag>
+              ))}
+            </Space>
+          )
+        },
+      },
+      {
+        title: '实施计划',
+        dataIndex: 'implementation_plan',
+        render: (v: string | null) => v ?? '-',
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 200,
+        render: (_: unknown, r) => {
+          const linked = matchBaselines(r, baselines)
+          const allowed = SNAPSHOT_ALLOWED.includes(r.approval_status)
+          return (
+            <Space size="small" wrap>
+              <Button size="small" onClick={() => openEdit(r)}>
+                编辑
+              </Button>
+              <Tooltip
+                title={
+                  allowed
+                    ? '冻结当前计划快照，作为该变更的留痕基线'
+                    : '审批通过后才能拍基线留痕'
+                }
+              >
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  disabled={!allowed}
+                  loading={snapshotId === r.id}
+                  onClick={() => void handleSnapshot(r)}
+                >
+                  {linked.length > 0 ? '再拍基线' : '拍基线'}
+                </Button>
+              </Tooltip>
+              <Popconfirm title="确认删除该变更？" onConfirm={() => void handleDelete(r)}>
+                <Button size="small" danger>
+                  删除
+                </Button>
+              </Popconfirm>
+            </Space>
+          )
+        },
+      },
+    ],
+    [baselines, handleDelete, handleSnapshot, openDiff, openEdit, snapshotId],
+  )
 
   return (
     <div>
@@ -209,95 +335,7 @@ export default function ChangesPage() {
           pagination={false}
           size="small"
           scroll={{ x: 1200 }}
-          columns={[
-            { title: '变更内容', dataIndex: 'title', width: 200 },
-            { title: '原因', dataIndex: 'origin', render: (v: string | null) => v ?? '-' },
-            {
-              title: '范围影响',
-              dataIndex: 'scope_impact',
-              width: 160,
-              render: (v: string | null) => v ?? '-',
-            },
-            {
-              title: '工期影响',
-              dataIndex: 'schedule_impact',
-              width: 140,
-              render: (v: string | null) => v ?? '-',
-            },
-            {
-              title: '审批状态',
-              dataIndex: 'approval_status',
-              width: 110,
-              render: (v: string) => <Tag color={APPROVAL_TAG[v] ?? 'default'}>{v}</Tag>,
-            },
-            {
-              title: '关联基线',
-              key: 'baseline',
-              width: 200,
-              render: (_: unknown, r) => {
-                const linked = matchBaselines(r, baselines)
-                if (linked.length === 0) return <span style={{ color: '#bfbfbf' }}>-</span>
-                return (
-                  <Space size={4} wrap>
-                    {linked.map(b => (
-                      <Tag
-                        key={b.id}
-                        color="blue"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => void openDiff(b)}
-                      >
-                        {b.name} v{b.version}
-                      </Tag>
-                    ))}
-                  </Space>
-                )
-              },
-            },
-            {
-              title: '实施计划',
-              dataIndex: 'implementation_plan',
-              render: (v: string | null) => v ?? '-',
-            },
-            {
-              title: '操作',
-              key: 'actions',
-              width: 200,
-              render: (_: unknown, r) => {
-                const linked = matchBaselines(r, baselines)
-                const allowed = SNAPSHOT_ALLOWED.includes(r.approval_status)
-                return (
-                  <Space size="small" wrap>
-                    <Button size="small" onClick={() => openEdit(r)}>
-                      编辑
-                    </Button>
-                    <Tooltip
-                      title={
-                        allowed
-                          ? '冻结当前计划快照，作为该变更的留痕基线'
-                          : '审批通过后才能拍基线留痕'
-                      }
-                    >
-                      <Button
-                        size="small"
-                        type="primary"
-                        ghost
-                        disabled={!allowed}
-                        loading={snapshotId === r.id}
-                        onClick={() => void handleSnapshot(r)}
-                      >
-                        {linked.length > 0 ? '再拍基线' : '拍基线'}
-                      </Button>
-                    </Tooltip>
-                    <Popconfirm title="确认删除该变更？" onConfirm={() => void handleDelete(r)}>
-                      <Button size="small" danger>
-                        删除
-                      </Button>
-                    </Popconfirm>
-                  </Space>
-                )
-              },
-            },
-          ]}
+          columns={columns}
         />
       </Card>
 
@@ -365,35 +403,7 @@ export default function ChangesPage() {
           dataSource={diffRows}
           pagination={false}
           scroll={{ x: 640 }}
-          columns={[
-            { title: 'WBS', dataIndex: 'wbs_code', width: 90 },
-            { title: '任务名称', dataIndex: 'name', width: 200 },
-            {
-              title: '差异',
-              key: 'changed',
-              width: 90,
-              render: (_: unknown, r) =>
-                r.changed ? <Tag color="orange">有变化</Tag> : <Tag>无变化</Tag>,
-            },
-            {
-              title: '基线值 → 当前值',
-              key: 'detail',
-              render: (_: unknown, r) => {
-                const keys = changedKeys(r)
-                if (keys.length === 0) return '-'
-                return (
-                  <div>
-                    {keys.map(key => (
-                      <div key={key}>
-                        {key}：{String(r.baseline?.[key] ?? '-')} →{' '}
-                        {String(r.current?.[key] ?? '-')}
-                      </div>
-                    ))}
-                  </div>
-                )
-              },
-            },
-          ]}
+          columns={DIFF_COLUMNS}
         />
       </Modal>
     </div>

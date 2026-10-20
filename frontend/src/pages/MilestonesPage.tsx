@@ -1,5 +1,6 @@
 import { PlusOutlined } from '@ant-design/icons'
 import { App, Button, Card, DatePicker, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd'
+import type { TableProps } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -63,7 +64,7 @@ export default function MilestonesPage() {
     setModalOpen(true)
   }
 
-  const openEdit = (m: Milestone) => {
+  const openEdit = useCallback((m: Milestone) => {
     setEditing(m)
     form.setFieldsValue({
       name: m.name,
@@ -73,7 +74,7 @@ export default function MilestonesPage() {
       description: m.description,
     })
     setModalOpen(true)
-  }
+  }, [form])
 
   const handleOk = async () => {
     if (!projectId) return
@@ -100,7 +101,7 @@ export default function MilestonesPage() {
     }
   }
 
-  const handleDelete = async (m: Milestone) => {
+  const handleDelete = useCallback(async (m: Milestone) => {
     try {
       await deleteMilestone(m.id)
       message.success('里程碑已删除')
@@ -108,7 +109,7 @@ export default function MilestonesPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败')
     }
-  }
+  }, [fetchData, message])
 
   /** 顶部汇总：总数 / 逾期数（未完成且计划日期已过）/ 即将到期数（未完成且 7 天内到期） */
   const summary = useMemo(() => {
@@ -130,7 +131,7 @@ export default function MilestonesPage() {
   }, [items])
 
   /** 状态列：逾期未完成→红「逾期 N 天」；7 天内到期→橙「即将到期」；已完成→绿；其余显示原状态 */
-  const renderStatus = (m: Milestone) => {
+  const renderStatus = useCallback((m: Milestone) => {
     if (isMilestoneDone(m)) return <Tag color="success">已完成</Tag>
     if (m.plan_date) {
       const today = localToday()
@@ -139,17 +140,57 @@ export default function MilestonesPage() {
       if (diff <= 7) return <Tag color="orange">即将到期</Tag>
     }
     return m.status ? <Tag>{m.status}</Tag> : <span style={{ color: '#c3c9d4' }}>—</span>
-  }
+  }, [])
 
   /** 剩余天数列：已完成或无计划日期显示 -；负数红色（逾期）、7 天内橙色 */
-  const renderRemaining = (m: Milestone) => {
+  const renderRemaining = useCallback((m: Milestone) => {
     if (isMilestoneDone(m) || !m.plan_date) return <span style={{ color: '#c3c9d4' }}>—</span>
     const diff = daysBetween(localToday(), m.plan_date)
     if (diff === 0) return <span style={{ color: '#d97706', fontWeight: 600 }}>今天</span>
     if (diff < 0) return <span style={{ color: '#dc2626', fontWeight: 600 }}>{diff} 天</span>
     if (diff <= 7) return <span style={{ color: '#d97706', fontWeight: 600 }}>{diff} 天</span>
     return <span>{diff} 天</span>
-  }
+  }, [])
+
+  /** 列定义依赖的渲染函数/回调均已稳定（useCallback），memo 后引用仅在真正变化时更新 */
+  const columns: TableProps<Milestone>['columns'] = useMemo(
+    () => [
+      { title: '名称', dataIndex: 'name' },
+      { title: '计划日期', dataIndex: 'plan_date', render: (v: string | null) => v ?? '-' },
+      { title: '实际日期', dataIndex: 'actual_date', render: (v: string | null) => v ?? '-' },
+      {
+        title: '剩余天数',
+        key: 'remaining',
+        width: 100,
+        align: 'center',
+        render: (_: unknown, record) => renderRemaining(record),
+      },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        render: (_: unknown, record) => renderStatus(record),
+      },
+      { title: '说明', dataIndex: 'description', render: (v: string | null) => v ?? '-' },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 140,
+        render: (_: unknown, record) => (
+          <Space>
+            <Button size="small" onClick={() => openEdit(record)}>
+              编辑
+            </Button>
+            <Popconfirm title="确认删除该里程碑？" onConfirm={() => void handleDelete(record)}>
+              <Button size="small" danger>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        ),
+      },
+    ],
+    [handleDelete, openEdit, renderRemaining, renderStatus],
+  )
 
   return (
     <div>
@@ -182,41 +223,7 @@ export default function MilestonesPage() {
           loading={loading}
           dataSource={items}
           pagination={false}
-          columns={[
-            { title: '名称', dataIndex: 'name' },
-            { title: '计划日期', dataIndex: 'plan_date', render: (v: string | null) => v ?? '-' },
-            { title: '实际日期', dataIndex: 'actual_date', render: (v: string | null) => v ?? '-' },
-            {
-              title: '剩余天数',
-              key: 'remaining',
-              width: 100,
-              align: 'center',
-              render: (_: unknown, record) => renderRemaining(record),
-            },
-            {
-              title: '状态',
-              dataIndex: 'status',
-              render: (_: unknown, record) => renderStatus(record),
-            },
-            { title: '说明', dataIndex: 'description', render: (v: string | null) => v ?? '-' },
-            {
-              title: '操作',
-              key: 'actions',
-              width: 140,
-              render: (_: unknown, record) => (
-                <Space>
-                  <Button size="small" onClick={() => openEdit(record)}>
-                    编辑
-                  </Button>
-                  <Popconfirm title="确认删除该里程碑？" onConfirm={() => void handleDelete(record)}>
-                    <Button size="small" danger>
-                      删除
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              ),
-            },
-          ]}
+          columns={columns}
         />
       </Card>
 

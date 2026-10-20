@@ -15,8 +15,9 @@ import {
   Tag,
   Tooltip,
 } from 'antd'
+import type { TableProps } from 'antd'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import type { IssueItem } from '../api/stage3'
@@ -108,7 +109,7 @@ export default function IssuesPage() {
     setModalOpen(true)
   }
 
-  const openEdit = (issue: IssueItem) => {
+  const openEdit = useCallback((issue: IssueItem) => {
     setEditing(issue)
     form.setFieldsValue({
       title: issue.title,
@@ -121,7 +122,7 @@ export default function IssuesPage() {
       status: issue.status,
     })
     setModalOpen(true)
-  }
+  }, [form])
 
   const handleOk = async () => {
     if (!projectId) return
@@ -156,7 +157,7 @@ export default function IssuesPage() {
     }
   }
 
-  const handleDelete = async (issue: IssueItem) => {
+  const handleDelete = useCallback(async (issue: IssueItem) => {
     try {
       await deleteIssue(issue.id)
       message.success('问题已删除')
@@ -164,7 +165,100 @@ export default function IssuesPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败')
     }
-  }
+  }, [fetchData, message])
+
+  /** 列定义依赖的渲染函数/回调均已稳定（useCallback），memo 后引用仅在真正变化时更新 */
+  const columns: TableProps<IssueItem>['columns'] = useMemo(
+    () => [
+      { title: '标题', dataIndex: 'title', width: 220 },
+      {
+        title: '严重度',
+        dataIndex: 'severity',
+        width: 90,
+        render: (v: string | null) =>
+          v ? <Tag color={SEVERITY_TAG[v] ?? 'default'}>{v}</Tag> : '-',
+      },
+      {
+        title: '负责人',
+        dataIndex: 'owner',
+        width: 90,
+        render: (v: string | null) => v ?? '-',
+      },
+      {
+        title: '要求解决日期',
+        dataIndex: 'due_date',
+        width: 120,
+        render: (v: string | null) => v ?? '-',
+      },
+      {
+        title: (
+          <Tooltip title="未关闭 = 今天 − 创建日；已关闭 = 关闭（验证）时间 − 创建日">
+            停留天数 <QuestionCircleOutlined />
+          </Tooltip>
+        ),
+        key: 'stay',
+        width: 130,
+        sorter: (a, b) => (stayDays(a) ?? -1) - (stayDays(b) ?? -1),
+        render: (_: unknown, r) => {
+          const days = stayDays(r)
+          if (days === null) return '-'
+          if (r.status === CLOSED_STATUS) return <Tag>{days} 天（已闭环）</Tag>
+          return <Tag color={stayColor(days)}>{days} 天</Tag>
+        },
+      },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 200,
+        render: (v: string, r) => {
+          const days = stayDays(r)
+          const stalled = v !== CLOSED_STATUS && days !== null && days > WARN_DAYS
+          return (
+            <Space size={4} wrap>
+              <Tag color={v === CLOSED_STATUS ? 'green' : 'blue'}>{v}</Tag>
+              {stalled ? <Tag color={stayColor(days as number)}>已停留 {days} 天</Tag> : null}
+            </Space>
+          )
+        },
+      },
+      {
+        title: '关闭结论',
+        dataIndex: 'closure_result',
+        render: (v: string | null) => v ?? '-',
+      },
+      {
+        title: '操作',
+        key: 'actions',
+        width: 180,
+        render: (_: unknown, r) => (
+          <Space size="small">
+            <Button size="small" onClick={() => openEdit(r)}>
+              编辑
+            </Button>
+            {r.status !== CLOSED_STATUS ? (
+              <Button
+                size="small"
+                type="primary"
+                ghost
+                onClick={() => {
+                  setCloseOpen(r)
+                  closeForm.resetFields()
+                }}
+              >
+                关闭
+              </Button>
+            ) : null}
+            <Popconfirm title="确认删除该问题？" onConfirm={() => void handleDelete(r)}>
+              <Button size="small" danger>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        ),
+      },
+    ],
+    [closeForm, handleDelete, openEdit],
+  )
 
   return (
     <div>
@@ -245,94 +339,7 @@ export default function IssuesPage() {
             const stalled = record.status !== CLOSED_STATUS && days !== null && days > DANGER_DAYS
             return stalled ? { style: { background: '#fff1f0' } } : {}
           }}
-          columns={[
-            { title: '标题', dataIndex: 'title', width: 220 },
-            {
-              title: '严重度',
-              dataIndex: 'severity',
-              width: 90,
-              render: (v: string | null) =>
-                v ? <Tag color={SEVERITY_TAG[v] ?? 'default'}>{v}</Tag> : '-',
-            },
-            {
-              title: '负责人',
-              dataIndex: 'owner',
-              width: 90,
-              render: (v: string | null) => v ?? '-',
-            },
-            {
-              title: '要求解决日期',
-              dataIndex: 'due_date',
-              width: 120,
-              render: (v: string | null) => v ?? '-',
-            },
-            {
-              title: (
-                <Tooltip title="未关闭 = 今天 − 创建日；已关闭 = 关闭（验证）时间 − 创建日">
-                  停留天数 <QuestionCircleOutlined />
-                </Tooltip>
-              ),
-              key: 'stay',
-              width: 130,
-              sorter: (a, b) => (stayDays(a) ?? -1) - (stayDays(b) ?? -1),
-              render: (_: unknown, r) => {
-                const days = stayDays(r)
-                if (days === null) return '-'
-                if (r.status === CLOSED_STATUS) return <Tag>{days} 天（已闭环）</Tag>
-                return <Tag color={stayColor(days)}>{days} 天</Tag>
-              },
-            },
-            {
-              title: '状态',
-              dataIndex: 'status',
-              width: 200,
-              render: (v: string, r) => {
-                const days = stayDays(r)
-                const stalled = v !== CLOSED_STATUS && days !== null && days > WARN_DAYS
-                return (
-                  <Space size={4} wrap>
-                    <Tag color={v === CLOSED_STATUS ? 'green' : 'blue'}>{v}</Tag>
-                    {stalled ? <Tag color={stayColor(days as number)}>已停留 {days} 天</Tag> : null}
-                  </Space>
-                )
-              },
-            },
-            {
-              title: '关闭结论',
-              dataIndex: 'closure_result',
-              render: (v: string | null) => v ?? '-',
-            },
-            {
-              title: '操作',
-              key: 'actions',
-              width: 180,
-              render: (_: unknown, r) => (
-                <Space size="small">
-                  <Button size="small" onClick={() => openEdit(r)}>
-                    编辑
-                  </Button>
-                  {r.status !== CLOSED_STATUS ? (
-                    <Button
-                      size="small"
-                      type="primary"
-                      ghost
-                      onClick={() => {
-                        setCloseOpen(r)
-                        closeForm.resetFields()
-                      }}
-                    >
-                      关闭
-                    </Button>
-                  ) : null}
-                  <Popconfirm title="确认删除该问题？" onConfirm={() => void handleDelete(r)}>
-                    <Button size="small" danger>
-                      删除
-                    </Button>
-                  </Popconfirm>
-                </Space>
-              ),
-            },
-          ]}
+          columns={columns}
         />
       </Card>
 

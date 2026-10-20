@@ -17,6 +17,7 @@ import {
   Tag,
   Typography,
 } from 'antd'
+import type { TableProps } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode, CSSProperties } from 'react'
@@ -249,7 +250,7 @@ export default function StakeholdersPage() {
     setModalOpen(true)
   }
 
-  const openEdit = (item: StakeholderItem) => {
+  const openEdit = useCallback((item: StakeholderItem) => {
     setEditing(item)
     setAttrs(parseParticipation(item.participation))
     setAutoHint('')
@@ -260,7 +261,7 @@ export default function StakeholdersPage() {
       demands: item.demands, strategy: item.strategy, comm_frequency: item.comm_frequency,
     })
     setModalOpen(true)
-  }
+  }, [form])
 
   const handleAutoScore = () => {
     const inf = form.getFieldValue('influence') || 3
@@ -289,7 +290,7 @@ export default function StakeholdersPage() {
     }
   }
 
-  const handleDelete = async (item: StakeholderItem) => {
+  const handleDelete = useCallback(async (item: StakeholderItem) => {
     try {
       await deleteStakeholder(item.id)
       message.success('干系人已删除')
@@ -297,10 +298,18 @@ export default function StakeholdersPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败')
     }
-  }
+  }, [fetchData, message])
+
+  /** 用最新拉取的记录列表同步某干系人的沟通统计（次数 / 最近沟通） */
+  const updateCommStats = useCallback((stakeholderId: string, list: CommunicationItem[]) => {
+    setCommStats((prev) => ({
+      ...prev,
+      [stakeholderId]: { count: list.length, lastDate: list[0]?.comm_date ?? null },
+    }))
+  }, [])
 
   /** 打开沟通历史抽屉：日期默认今天，加载该干系人的沟通记录 */
-  const openComms = async (item: StakeholderItem) => {
+  const openComms = useCallback(async (item: StakeholderItem) => {
     setCommOpen(item)
     commForm.resetFields()
     commForm.setFieldsValue({ comm_date: dayjs() })
@@ -312,15 +321,7 @@ export default function StakeholdersPage() {
       setComms([])
       message.error(err instanceof Error ? err.message : '加载沟通记录失败')
     }
-  }
-
-  /** 用最新拉取的记录列表同步某干系人的沟通统计（次数 / 最近沟通） */
-  const updateCommStats = (stakeholderId: string, list: CommunicationItem[]) => {
-    setCommStats((prev) => ({
-      ...prev,
-      [stakeholderId]: { count: list.length, lastDate: list[0]?.comm_date ?? null },
-    }))
-  }
+  }, [commForm, message, updateCommStats])
 
   const handleAddComm = async () => {
     if (!commOpen) return
@@ -344,7 +345,7 @@ export default function StakeholdersPage() {
     }
   }
 
-  const handleDeleteComm = async (commId: string) => {
+  const handleDeleteComm = useCallback(async (commId: string) => {
     if (!commOpen) return
     try {
       await deleteCommunication(commId)
@@ -355,7 +356,7 @@ export default function StakeholdersPage() {
     } catch (err) {
       message.error(err instanceof Error ? err.message : '删除失败')
     }
-  }
+  }, [commOpen, message, updateCommStats])
 
   const toggleFilter = (key: string, type: 'attr' | 'prio') => {
     if (type === 'attr') {
@@ -408,13 +409,15 @@ export default function StakeholdersPage() {
   )
 
   // ==================== 表格列（区分 group / sub / person） ====================
-  const cellFor = (r: TableRow, personRender: (d: StakeholderItem) => ReactNode, groupText = ''): ReactNode => {
+  // 下面这些单元格渲染函数只读取 props/模块常量，用 useCallback 固定引用，
+  // 使其可以作为列定义 useMemo 的稳定依赖（避免每次渲染都重建列定义）。
+  const cellFor = useCallback((r: TableRow, personRender: (d: StakeholderItem) => ReactNode, groupText = ''): ReactNode => {
     if (r.type === 'org') return <span style={{ fontWeight: 700, fontSize: 13, color: '#123c58' }}>{groupText}</span>
     if (r.type === 'sub') return <span style={{ fontWeight: 600, fontSize: 12, color: '#1a5e8a', paddingLeft: 20 }}>{groupText}</span>
     return personRender(r.data!)
-  }
+  }, [])
 
-  const scoreCell = (v: number) => (
+  const scoreCell = useCallback((v: number) => (
     <span style={{
       display: 'inline-block', minWidth: 26, padding: '1px 6px', borderRadius: 6, textAlign: 'center',
       fontSize: 12, fontWeight: 700,
@@ -423,22 +426,22 @@ export default function StakeholdersPage() {
     }}>
       {v}
     </span>
-  )
+  ), [])
 
-  const priorityCell = (v: string | null) => v ? (
+  const priorityCell = useCallback((v: string | null) => v ? (
     <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 12, fontSize: 10, fontWeight: 700, color: '#fff', background: PRIORITY_COLORS[v] || '#6b7c8c' }}>{v}</span>
-  ) : '-'
+  ) : '-', [])
 
-  const contactCell = (d: StakeholderItem) => (
+  const contactCell = useCallback((d: StakeholderItem) => (
     <div style={{ fontSize: 11, lineHeight: 1.5 }}>
       {d.contact_phone ? <div>📱 {d.contact_phone}</div> : null}
       {d.contact_wechat ? <div>💬 {d.contact_wechat}</div> : null}
       {d.contact_email ? <div>✉️ {d.contact_email}</div> : null}
       {!d.contact_phone && !d.contact_wechat && !d.contact_email ? '-' : null}
     </div>
-  )
+  ), [])
 
-  const actionCell = (d: StakeholderItem) => (
+  const actionCell = useCallback((d: StakeholderItem) => (
     <Space size={4}>
       <Button size="small" icon={<MessageOutlined />} onClick={() => void openComms(d)} />
       <Button size="small" onClick={() => openEdit(d)}>编辑</Button>
@@ -446,14 +449,15 @@ export default function StakeholdersPage() {
         <Button size="small" danger icon={<DeleteOutlined />} title="删除干系人" />
       </Popconfirm>
     </Space>
-  )
+  ), [handleDelete, openComms, openEdit])
 
-  const rowBg = (r: TableRow): string => {
+  const rowBg = useCallback((r: TableRow): string => {
     if (r.type === 'org') return '#f0f5fa'
     if (r.type === 'sub') return '#f6f9fc'
     return '#ffffff'
-  }
+  }, [])
 
+  /** 分组视图列定义：依赖的辅助渲染函数均已稳定（useCallback），memo 后引用恒定 */
   const columns: {
     title: string
     key: string
@@ -463,7 +467,7 @@ export default function StakeholdersPage() {
     fixed?: 'right'
     onCell?: (record: TableRow, rowIndex?: number) => { style?: CSSProperties }
     render: (_: unknown, record: TableRow) => ReactNode
-  }[] = [
+  }[] = useMemo(() => [
     {
       title: '干系人', key: 'name', width: 140,
       render: (_: unknown, r) => cellFor(r, (d) => (
@@ -529,7 +533,68 @@ export default function StakeholdersPage() {
         return actionCell(r.data!)
       },
     },
-  ]
+  ], [actionCell, cellFor, contactCell, priorityCell, rowBg])
+
+  /** 列表视图列定义：仅「沟通记录」列读 commStats，其余依赖已稳定的辅助函数 */
+  const listColumns: TableProps<StakeholderItem>['columns'] = useMemo(() => [
+    {
+      title: '干系人', key: 'name', width: 150, fixed: 'left' as const,
+      render: (_: unknown, d) => (
+        <div>
+          <div style={{ fontWeight: 600 }}>{d.name}</div>
+          {d.role ? <div style={{ fontSize: 10, color: '#8a9ba8' }}>{d.role}</div> : null}
+        </div>
+      ),
+    },
+    { title: '单位', key: 'org', width: 130, render: (_: unknown, d) => <span style={{ fontSize: 12 }}>{d.org || '-'}</span> },
+    { title: '角色分类', key: 'sub_pos', width: 100, render: (_: unknown, d) => <span style={{ fontSize: 12 }}>{d.sub_pos || '-'}</span> },
+    { title: '联系方式', key: 'contact', width: 140, render: (_: unknown, d) => contactCell(d) },
+    { title: '影响力', key: 'influence', width: 70, align: 'center' as const, render: (_: unknown, d) => scoreCell(d.influence) },
+    { title: '关注度', key: 'interest', width: 70, align: 'center' as const, render: (_: unknown, d) => scoreCell(d.interest) },
+    { title: '优先级', key: 'priority', width: 70, align: 'center' as const, render: (_: unknown, d) => priorityCell(d.priority) },
+    {
+      title: '需求/核心诉求', key: 'demands', width: 200, ellipsis: true,
+      render: (_: unknown, d) => <span style={{ fontSize: 12 }}>{d.demands || '-'}</span>,
+    },
+    { title: '沟通计划', key: 'comm', width: 100, render: (_: unknown, d) => d.comm_frequency || '-' },
+    {
+      title: '沟通记录', key: 'commStat', width: 120,
+      render: (_: unknown, d) => {
+        const stat = commStats[d.id]
+        if (!stat) return <span style={{ color: '#c3cfda' }}>—</span>
+        return (
+          <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+            <span style={{ fontWeight: 600, color: stat.count > 0 ? '#1a5e8a' : '#8a9ba8' }}>{stat.count} 次</span>
+            {stat.lastDate ? (
+              <div style={{ color: '#8a9ba8' }}>最近 {stat.lastDate}</div>
+            ) : (
+              <div style={{ color: '#c3cfda' }}>暂无记录</div>
+            )}
+          </div>
+        )
+      },
+    },
+    { title: '操作', key: 'actions', width: 130, fixed: 'right' as const, onCell: () => ({ style: { background: '#ffffff' } }), render: (_: unknown, d) => actionCell(d) },
+  ], [actionCell, commStats, contactCell, priorityCell, scoreCell])
+
+  /** 沟通历史列定义：仅依赖已稳定的 handleDeleteComm */
+  const commColumns: TableProps<CommunicationItem>['columns'] = useMemo(() => [
+    { title: '日期', dataIndex: 'comm_date', width: 95, render: (v: string | null) => v ?? '-' },
+    { title: '渠道', dataIndex: 'channel', width: 70, render: (v: string | null) => v ?? '-' },
+    {
+      title: '内容/结论', key: 'content',
+      render: (_: unknown, r) => `${r.content ?? ''}${r.conclusion ? `（结论：${r.conclusion}）` : ''}`,
+    },
+    { title: '后续行动', dataIndex: 'follow_up_action', width: 130, render: (v: string | null) => v ?? '-' },
+    {
+      title: '', key: 'actions', width: 50,
+      render: (_: unknown, r) => (
+        <Popconfirm title="确认删除该沟通记录？" onConfirm={() => void handleDeleteComm(r.id)}>
+          <Button size="small" danger icon={<DeleteOutlined />} />
+        </Popconfirm>
+      ),
+    },
+  ], [handleDeleteComm])
 
   const rowStyle = (r: TableRow): CSSProperties => {
     if (r.type === 'org') return { background: '#f0f5fa', fontWeight: 700, color: '#123c58' }
@@ -640,46 +705,7 @@ export default function StakeholdersPage() {
             size="small"
             scroll={{ x: 1320 }}
             rowSelection={selectionShared}
-            columns={[
-              {
-                title: '干系人', key: 'name', width: 150, fixed: 'left' as const,
-                render: (_: unknown, d) => (
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{d.name}</div>
-                    {d.role ? <div style={{ fontSize: 10, color: '#8a9ba8' }}>{d.role}</div> : null}
-                  </div>
-                ),
-              },
-              { title: '单位', key: 'org', width: 130, render: (_: unknown, d) => <span style={{ fontSize: 12 }}>{d.org || '-'}</span> },
-              { title: '角色分类', key: 'sub_pos', width: 100, render: (_: unknown, d) => <span style={{ fontSize: 12 }}>{d.sub_pos || '-'}</span> },
-              { title: '联系方式', key: 'contact', width: 140, render: (_: unknown, d) => contactCell(d) },
-              { title: '影响力', key: 'influence', width: 70, align: 'center' as const, render: (_: unknown, d) => scoreCell(d.influence) },
-              { title: '关注度', key: 'interest', width: 70, align: 'center' as const, render: (_: unknown, d) => scoreCell(d.interest) },
-              { title: '优先级', key: 'priority', width: 70, align: 'center' as const, render: (_: unknown, d) => priorityCell(d.priority) },
-              {
-                title: '需求/核心诉求', key: 'demands', width: 200, ellipsis: true,
-                render: (_: unknown, d) => <span style={{ fontSize: 12 }}>{d.demands || '-'}</span>,
-              },
-              { title: '沟通计划', key: 'comm', width: 100, render: (_: unknown, d) => d.comm_frequency || '-' },
-              {
-                title: '沟通记录', key: 'commStat', width: 120,
-                render: (_: unknown, d) => {
-                  const stat = commStats[d.id]
-                  if (!stat) return <span style={{ color: '#c3cfda' }}>—</span>
-                  return (
-                    <div style={{ fontSize: 11, lineHeight: 1.5 }}>
-                      <span style={{ fontWeight: 600, color: stat.count > 0 ? '#1a5e8a' : '#8a9ba8' }}>{stat.count} 次</span>
-                      {stat.lastDate ? (
-                        <div style={{ color: '#8a9ba8' }}>最近 {stat.lastDate}</div>
-                      ) : (
-                        <div style={{ color: '#c3cfda' }}>暂无记录</div>
-                      )}
-                    </div>
-                  )
-                },
-              },
-              { title: '操作', key: 'actions', width: 130, fixed: 'right' as const, onCell: () => ({ style: { background: '#ffffff' } }), render: (_: unknown, d) => actionCell(d) },
-            ]}
+            columns={listColumns}
           />
         ) : (
           <Table<TableRow>
@@ -783,23 +809,7 @@ export default function StakeholdersPage() {
       {/* 沟通历史 */}
       <Drawer title={commOpen ? `沟通历史 · ${commOpen.name}` : ''} open={!!commOpen} onClose={() => setCommOpen(null)} width={640}>
         <Table<CommunicationItem> rowKey="id" size="small" dataSource={comms} pagination={false}
-          columns={[
-            { title: '日期', dataIndex: 'comm_date', width: 95, render: (v: string | null) => v ?? '-' },
-            { title: '渠道', dataIndex: 'channel', width: 70, render: (v: string | null) => v ?? '-' },
-            {
-              title: '内容/结论', key: 'content',
-              render: (_: unknown, r) => `${r.content ?? ''}${r.conclusion ? `（结论：${r.conclusion}）` : ''}`,
-            },
-            { title: '后续行动', dataIndex: 'follow_up_action', width: 130, render: (v: string | null) => v ?? '-' },
-            {
-              title: '', key: 'actions', width: 50,
-              render: (_: unknown, r) => (
-                <Popconfirm title="确认删除该沟通记录？" onConfirm={() => void handleDeleteComm(r.id)}>
-                  <Button size="small" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-              ),
-            },
-          ]} />
+          columns={commColumns} />
         <Form form={commForm} layout="vertical" style={{ marginTop: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Form.Item name="comm_date" label="沟通日期（默认今天）"><DatePicker style={{ width: '100%' }} /></Form.Item>

@@ -117,24 +117,28 @@ export default function KanbanPage() {
       return
     }
     const task = tasks.find((t) => t.id === dragging.taskId)
-    const fromStatus = dragging.fromStatus
     setDragging(null)
     if (!task) return
+    // 改动前的卡片快照：失败时只回滚这一张卡
+    const snapshot = task
+    const nextProgress = targetStatus === '已完成' ? Math.max(task.progress, 100) : task.progress
     // 乐观更新
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: targetStatus } : t)))
+    setTasks((prev) =>
+      prev.map((t) => (t.id === snapshot.id ? { ...t, status: targetStatus, progress: nextProgress } : t)),
+    )
     suppressClick.current = true
     setTimeout(() => { suppressClick.current = false }, 250)
     try {
-      await updateTask(task.id, {
-        status: targetStatus,
-        progress: targetStatus === '已完成' ? Math.max(task.progress, 100) : task.progress,
-      })
+      const updated = await updateTask(task.id, { status: targetStatus, progress: nextProgress })
+      // 成功后不再全量 fetchData：本地状态已是服务端确认的最终值，
+      // 只需用响应体覆盖这一张卡（服务端可能补齐 sort_order / effective_progress）
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)))
       message.success(`「${task.name}」已移至 ${targetStatus}`)
-      await fetchData()
     } catch (err) {
-      // 失败回滚
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: fromStatus } : t)))
+      // 失败：先用快照回滚这一张卡，再全量刷新兜底（拉取服务端真值）
+      setTasks((prev) => prev.map((t) => (t.id === snapshot.id ? snapshot : t)))
       message.error(err instanceof Error ? err.message : '移动失败')
+      await fetchData()
     }
   }
 
@@ -150,25 +154,30 @@ export default function KanbanPage() {
     if (!detailTask) return
     const prevStatus = detailTask.status
     const prevProgress = Math.round(detailTask.progress)
+    // 改动前的卡片快照：失败时只回滚这一张卡
+    const snapshot = tasks.find((t) => t.id === detailTask.id) ?? null
     setSaving(true)
     // 乐观更新列表
     setTasks((prev) =>
       prev.map((t) => (t.id === detailTask.id ? { ...t, status: nextStatus, progress: nextProgress } : t)),
     )
     try {
-      await updateTask(detailTask.id, { status: nextStatus, progress: nextProgress })
+      const updated = await updateTask(detailTask.id, { status: nextStatus, progress: nextProgress })
+      // 成功后不再全量 fetchData，用响应体覆盖这一张卡与抽屉内数据
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)))
+      setDetailTask({ ...detailTask, ...updated })
+      setDetailStatus(updated.status)
+      setDetailProgress(Math.round(updated.progress))
       message.success('已保存')
-      const refreshed = { ...detailTask, status: nextStatus, progress: nextProgress }
-      setDetailTask(refreshed)
-      await fetchData()
     } catch (err) {
-      // 失败回滚
-      setTasks((prev) =>
-        prev.map((t) => (t.id === detailTask.id ? { ...t, status: prevStatus, progress: prevProgress } : t)),
-      )
+      // 失败：先用快照回滚这一张卡，再全量刷新兜底
+      if (snapshot) {
+        setTasks((prev) => prev.map((t) => (t.id === snapshot.id ? snapshot : t)))
+      }
       setDetailStatus(prevStatus)
       setDetailProgress(prevProgress)
       message.error(err instanceof Error ? err.message : '保存失败')
+      await fetchData()
     } finally {
       setSaving(false)
     }

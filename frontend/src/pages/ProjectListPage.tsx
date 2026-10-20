@@ -72,25 +72,33 @@ export default function ProjectListPage() {
     }
   }
 
-  const handleArchive = async (project: Project) => {
-    try {
-      await archiveProject(project.id)
-      message.success(`项目 ${project.code} 已归档`)
-      await fetchData()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '归档失败')
-    }
-  }
+  // useCallback 包裹：使归档/删除持有最新一轮 fetchData（含最新分页/筛选值），
+  // 同时作为稳定引用进入 columns 的 useMemo 依赖数组。
+  const handleArchive = useCallback(
+    async (project: Project) => {
+      try {
+        await archiveProject(project.id)
+        message.success(`项目 ${project.code} 已归档`)
+        await fetchData()
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '归档失败')
+      }
+    },
+    [fetchData, message],
+  )
 
-  const handleDelete = async (project: Project) => {
-    try {
-      await deleteProject(project.id)
-      message.success(`项目 ${project.code} 已删除`)
-      await fetchData()
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '删除失败')
-    }
-  }
+  const handleDelete = useCallback(
+    async (project: Project) => {
+      try {
+        await deleteProject(project.id)
+        message.success(`项目 ${project.code} 已删除`)
+        await fetchData()
+      } catch (err) {
+        message.error(err instanceof Error ? err.message : '删除失败')
+      }
+    },
+    [fetchData, message],
+  )
 
   const columns: TableProps<Project>['columns'] = useMemo(
     () => [
@@ -164,7 +172,7 @@ export default function ProjectListPage() {
         ),
       },
     ],
-    [navigate, message],
+    [navigate, handleArchive, handleDelete],
   )
 
   const handleTableChange: TableProps<Project>['onChange'] = (pagination, _filters, sorter) => {

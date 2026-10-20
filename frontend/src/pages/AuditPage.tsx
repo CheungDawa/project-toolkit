@@ -1,4 +1,5 @@
 import { App, Select, Space, Table, Tag } from 'antd'
+import type { TableProps } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -14,6 +15,20 @@ const ACTION_TAG: Record<string, string> = {
   assess: 'cyan',
   convert_from_risk: 'orange',
 }
+
+/** 列定义不读取任何组件状态，提到模块级：渲染间引用恒定，antd 不会重建表头/列宽 */
+const COLUMNS: TableProps<AuditLogItem>['columns'] = [
+  { title: '时间', dataIndex: 'occurred_at', width: 170, render: (v: string) => v.slice(0, 19).replace('T', ' ') },
+  { title: '对象', dataIndex: 'object_type', width: 110, render: (v: string) => <Tag>{v}</Tag> },
+  {
+    title: '操作',
+    dataIndex: 'action',
+    width: 140,
+    render: (v: string) => <Tag color={ACTION_TAG[v] ?? 'default'}>{v}</Tag>,
+  },
+  { title: '摘要', dataIndex: 'summary' },
+  { title: '操作人', dataIndex: 'operator', width: 100 },
+]
 
 export default function AuditPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -65,18 +80,7 @@ export default function AuditPage() {
         pagination={{ pageSize: 50 }}
         size="small"
         scroll={{ x: 1000 }}
-        columns={[
-          { title: '时间', dataIndex: 'occurred_at', width: 170, render: (v: string) => v.slice(0, 19).replace('T', ' ') },
-          { title: '对象', dataIndex: 'object_type', width: 110, render: (v: string) => <Tag>{v}</Tag> },
-          {
-            title: '操作',
-            dataIndex: 'action',
-            width: 140,
-            render: (v: string) => <Tag color={ACTION_TAG[v] ?? 'default'}>{v}</Tag>,
-          },
-          { title: '摘要', dataIndex: 'summary' },
-          { title: '操作人', dataIndex: 'operator', width: 100 },
-        ]}
+        columns={COLUMNS}
       />
     </div>
   )
