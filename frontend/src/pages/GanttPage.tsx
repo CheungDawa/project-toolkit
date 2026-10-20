@@ -1,6 +1,7 @@
 import { App, Button, Card, Checkbox, DatePicker, Segmented, Space, Tag, Tooltip, Typography } from 'antd'
 import { toPng } from 'html-to-image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import dayjs, { type Dayjs } from 'dayjs'
 
@@ -9,6 +10,11 @@ import GanttView from '../components/GanttView'
 import { getProject } from '../api/projects'
 import type { DependencyItem, Milestone, TaskItem } from '../api/stage2'
 import { getCalendar, listMilestones, listTasks, updateTask } from '../api/stage2'
+// 树工具与 WbsPage 共用一个公共模块（原先两份实现只差一段重复代码，行为逐字等价）。
+// 注意：descendantRange 内部按 childrenMap 对象做 WeakMap 缓存，前提是该 map 建好后不再增删 ——
+// 这里在 useMemo 里现建现用、只读，满足前提；若将来改成跨渲染复用一个 map，请改调
+// buildDescendantRanges() 一次拿全表，避免读到过期聚合。
+import { buildChildrenMap, compareWbsCode, descendantRange } from '../utils/wbsTree'
 
 /** 视图模式中文名，用于导出图标题 */
 const VIEW_MODE_LABEL: Record<GanttViewMode, string> = { Day: '日', Week: '周', Month: '月' }
@@ -126,11 +132,20 @@ function inlineSvgPaint(root: HTMLElement): () => void {
 }
 
 /**
- * 复刻 frappe-gantt 的日期差函数（源码 node_modules/frappe-gantt/dist/frappe-gantt.es.js
- * 的 utils/date.js::diff），口径必须逐位一致，否则区间导出的像素偏移会和库渲染错位：
- * - day：毫秒差（含时区偏移修正）/ 86400000
- * - month：(年差×12 + 月差) + 日期/31，且日期小于基准日期时再减 1
- * - 结果统一按两位小数四舍五入（库用 Math.round(x*100)/100）
+ * 复刻 frappe-gantt 的日期差函数（源码 node_modules/frappe-gantt/dist/frappe-gantt.es.js:65-84
+ * 的 utils/date.js::diff，dist 里压缩成单字母变量），逐行对齐如下：
+ * ```js
+ * i = n - t + (t.getTimezoneOffset() - n.getTimezoneOffset()) * 6e4   // 毫秒差（含时区偏移修正）
+ * o = i / 1e3 / 60 / 60 / 24                                          // days
+ * let l = n.getFullYear() - t.getFullYear(), _ = n.getMonth() - t.getMonth();
+ * _ += n.getDate() / 31;                                               // 日期按 31 天近似
+ * h = l * 12 + _;                                                      // months
+ * n.getDate() < t.getDate() && h--;                                     // 跨月修正
+ * return Math.round({...,months: h,...}[unit] * 100) / 100;
+ * ```
+ * 结论：库的月分支用的就是 `day / 31`（不是当月实际天数）+ 日期回退修正，
+ * 因此这里保持同一口径（bar 位置、今日线、周末底纹都走这个 diff）。
+ * 注意它**不等于**竖刻度线的位置，刻度线另见 monthColumnStartX()。
  */
 function frappeDateDiff(target: Date, ganttStart: Date, unit: string): number {
   const ms =
@@ -155,34 +170,39 @@ function frappeDateDiff(target: Date, ganttStart: Date, unit: string): number {
   return Math.round(value * 100) / 100
 }
 
-/**
- * 把日期换算成甘特图内的横向像素偏移（与 frappe-gantt 渲染公式一致）。
- * 库内部：`x = diff(date, gantt_start, unit) / step * column_width`
- * （bar.js::compute_x 与 setup_date_values 均用此式，gantt_start 由
- * setup_gantt_dates 归一到当天 0 点）。这里不依赖库私有 API，用等价复算。
- * - day/week 视图 unit='day'、step 分别为 1 / 7
- * - month 视图 unit='month'（gantt_start 为月初，列边界即日历月）
- */
-function dateToX(
-  dateStr: string,
-  metrics: { ganttStart: Date; columnWidth: number; unit: string; step: number },
-): number {
-  const target = new Date(`${dateStr}T00:00:00`)
-  return (
-    (frappeDateDiff(target, metrics.ganttStart, metrics.unit) / metrics.step) * metrics.columnWidth
-  )
+/** 两个日期相差多少个自然月（只看年月，不看日） */
+function monthsBetween(from: Date, to: Date): number {
+  return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth())
 }
 
-/** 取某日期在甘特图刻度列中的左缘像素（日期所在列的起始位置，而非日期自身的偏移） */
+/**
+ * 取某日期在甘特图刻度列中的左缘像素（日期所在列的起始位置，而非日期自身的偏移）。
+ *
+ * 月视图为什么直接用「月序号 × 列宽」而不是 frappe 的 diff：
+ * 库内部渲染竖刻度线时写的是
+ *   `this.view_is("month") ? t += get_days_in_month(d) * column_width / 30 : t += column_width`
+ * （dist:1123），但 `view_is`（dist:1668）是 `options.view_mode.name === t` 的**大小写敏感**比较，
+ * 而内置视图名是 `"Month"`（dist:762）—— 所以那段「按实际天数累加」的分支对内置月视图是死代码，
+ * 刻度线实际就是等距 `column_width`。HTML 表头也是等距
+ * （`get_date_info`：`x = 上一列.x + column_width`，dist:1287）。
+ * 反观 diff 的月分支（day/31）会给每个月首日固定带来 `column_width/31` 的偏移
+ * （实测 column_width=120 时恒定偏 3.87px），跨月天数近似完全不参与累加。
+ * 因此这里按等距列取整：月序号 × columnWidth，与刻度线/表头严格一致。
+ */
 function dateToColumnStart(
   dateStr: string,
   metrics: { ganttStart: Date; columnWidth: number; unit: string; step: number },
 ): number {
   if (metrics.unit === 'month') {
-    // 月视图列边界=日历月：对齐到当月 1 号（库在月视图下 gantt_start 必为月初）
-    return dateToX(dayjs(dateStr).startOf('month').format('YYYY-MM-DD'), metrics)
+    const monthStart = dayjs(dateStr).startOf('month').toDate()
+    return monthsBetween(metrics.ganttStart, monthStart) * metrics.columnWidth
   }
-  // 天/周视图：向下取整到所在列（day step=1 时即日期自身）
+  if (metrics.unit === 'year') {
+    // 年视图当前不提供入口，按等距年列兜底（同上：view_is("year") 同样是死分支）
+    const yearStart = dayjs(dateStr).startOf('year').toDate()
+    return (yearStart.getFullYear() - metrics.ganttStart.getFullYear()) * metrics.columnWidth
+  }
+  // 天/周视图：刻度线就是等距的 column_width，向下取整到所在列即可（day step=1 时即日期自身）
   const target = new Date(`${dateStr}T00:00:00`)
   const diffDays = frappeDateDiff(target, metrics.ganttStart, 'day')
   return Math.floor(diffDays / metrics.step) * metrics.columnWidth
@@ -194,62 +214,17 @@ function dateToColumnEnd(
   metrics: { ganttStart: Date; columnWidth: number; unit: string; step: number },
 ): number {
   if (metrics.unit === 'month') {
-    // 月视图：右缘=下月初的像素位置（库的 dates 递推即 add(gantt_start, k, 'month')）
-    return dateToX(dayjs(dateStr).add(1, 'month').startOf('month').format('YYYY-MM-DD'), metrics)
+    // 月视图：右缘 = 下一个月的列左缘（即相邻刻度线）
+    const nextMonthStart = dayjs(dateStr).startOf('month').add(1, 'month').toDate()
+    return monthsBetween(metrics.ganttStart, nextMonthStart) * metrics.columnWidth
+  }
+  if (metrics.unit === 'year') {
+    const nextYearStart = dayjs(dateStr).startOf('year').add(1, 'year').toDate()
+    return (nextYearStart.getFullYear() - metrics.ganttStart.getFullYear()) * metrics.columnWidth
   }
   const target = new Date(`${dateStr}T00:00:00`)
   const diffDays = frappeDateDiff(target, metrics.ganttStart, 'day')
   return (Math.floor(diffDays / metrics.step) + 1) * metrics.columnWidth
-}
-
-/**
- * WBS 编码比较器：'1.10' 应排在 '1.2' 之后，字符串比较会得出相反结果。
- * 逐段转数字比元组；非数字段用 1e6 兜底（与后端 app/services/wbs.py::wbs_sort_key 同口径）。
- */
-function compareWbsCode(a: string, b: string): number {
-  const toKey = (code: string): number[] =>
-    code.split('.').map((part) => {
-      const value = Number.parseInt(part, 10)
-      return Number.isFinite(value) ? value : 1e6
-    })
-  const left = toKey(a)
-  const right = toKey(b)
-  const len = Math.max(left.length, right.length)
-  for (let i = 0; i < len; i += 1) {
-    const diff = (left[i] ?? 0) - (right[i] ?? 0)
-    if (diff !== 0) return diff
-  }
-  return 0
-}
-
-/** 构建 parent_id -> 直接子任务 的索引（key 为 null 表示顶级任务） */
-function buildChildrenMap(tasks: TaskItem[]): Map<string | null, TaskItem[]> {
-  const map = new Map<string | null, TaskItem[]>()
-  for (const task of tasks) {
-    const key = task.parent_id
-    const list = map.get(key) ?? []
-    list.push(task)
-    map.set(key, list)
-  }
-  return map
-}
-
-/** 汇总某任务全部后代（含所有层级）的计划区间 */
-function descendantRange(
-  parentId: string,
-  childrenMap: Map<string | null, TaskItem[]>,
-): { start: string | null; end: string | null } {
-  let start: string | null = null
-  let end: string | null = null
-  const stack: TaskItem[] = [...(childrenMap.get(parentId) ?? [])]
-  while (stack.length > 0) {
-    const node = stack.pop() as TaskItem
-    if (node.plan_start && (!start || node.plan_start < start)) start = node.plan_start
-    if (node.plan_end && (!end || node.plan_end > end)) end = node.plan_end
-    const kids = childrenMap.get(node.id)
-    if (kids) stack.push(...kids)
-  }
-  return { start, end }
 }
 
 function GanttLegend() {
@@ -323,6 +298,12 @@ export default function GanttPage() {
 
   const exportRef = useRef<HTMLDivElement>(null)
   const ganttRef = useRef<GanttViewHandle>(null)
+  /**
+   * 导出进行中的重入锁。故意用 ref 而不是 state：
+   * 它只在同步流程里判断，不需要触发渲染（用 state 反而会多一轮重渲染，
+   * 甚至让甘特图容器在截图过程中重排）。
+   */
+  const exportingRef = useRef(false)
 
   const fetchData = useCallback(async () => {
     if (!projectId) return
@@ -477,7 +458,26 @@ export default function GanttPage() {
       return
     }
     try {
-      await updateTask(taskId, { progress })
+      const updated = await updateTask(taskId, { progress })
+      /**
+       * 本地同步（与 handleDateChange 同款，不能省）：
+       * 甘特图只要因为**任何别的原因**重建一次（切视图、汇总条拖动归位、错误边界重挂载、
+       * 数据回流），就会完全按 props 重画进度条。若这里不同步，重建后进度条会**视觉回退**
+       * 到拖动前那个百分比，而服务端其实已经是新值 —— 也就是「刷新一下才对」的现象。
+       * 优先用 PATCH 响应体（后端可能夹紧或重算），响应体没给该字段时退回提交值；
+       * effective_progress 必须一起写，因为 item.progress 取的是
+       * `effective_progress ?? progress`（见上面的 toItem）。
+       */
+      const nextProgress = typeof updated?.progress === 'number' ? updated.progress : progress
+      const nextEffective =
+        typeof updated?.effective_progress === 'number' ? updated.effective_progress : nextProgress
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? { ...t, progress: nextProgress, effective_progress: nextEffective }
+            : t,
+        ),
+      )
     } catch (err) {
       message.error(err instanceof Error ? err.message : '进度保存失败')
     }
@@ -498,6 +498,8 @@ export default function GanttPage() {
       message.error('甘特图尚未渲染完成，请稍后再导出')
       return
     }
+    if (exportingRef.current) return
+    exportingRef.current = true
     setExporting(true)
 
     /**
@@ -520,12 +522,40 @@ export default function GanttPage() {
     remember(ganttSvg)
     remember(gridHeader)
     let restoreSvgPaint: (() => void) | null = null
+    /** 导出前 .pt-gantt-view 的行内 pointer-events，结束时原样恢复 */
+    const previousPointerEvents = ganttView ? ganttView.style.pointerEvents : ''
 
     try {
+      /**
+       * 导出期间禁止拖拽：有人在中途拖出新的 bar 位置，截图里就会出现半截/重影
+       * （拖拽会改 SVG 的 x/width，而截图是分步克隆的）。直接锁在甘特图容器上，
+       * 不额外渲染任何遮罩，也不影响导出图本身（pointer-events 不参与绘制）。
+       */
+      if (ganttView) ganttView.style.pointerEvents = 'none'
+
       const stamp = formatStamp(new Date())
-      setGeneratedAt(stamp)
-      // 让「生成时间」先落盘到 DOM 再截图（React 18 的批处理需要让出一次事件循环）
-      await new Promise((resolve) => window.setTimeout(resolve, 60))
+      /**
+       * 「生成时间」必须先进 DOM 再截图。这里不再用「等 60ms」这类经验性定时：
+       * flushSync 同步提交这次状态写入（DOM 立刻带新文案），
+       * 再等两帧（rAF）确保浏览器完成样式重算与布局，之后读到的 scrollWidth/offsetWidth 才是终值。
+       *
+       * 但 rAF 在**后台标签页 / 窗口最小化**时会被暂停，只等 rAF 会让这个 await 永不返回：
+       * 导出既不报错也不结束，`pointer-events: none` 一直挂在甘特图上（看起来像页面卡死）。
+       * 因此与 300ms 超时赛跑：后台时靠定时器兜底往下走，此时页面没在绘制，
+       * 布局同样已是最新的，量出来的尺寸依然正确。
+       */
+      flushSync(() => {
+        setGeneratedAt(stamp)
+      })
+      const twoFrames = new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve())
+        })
+      })
+      const framesTimeout = new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 300)
+      })
+      await Promise.race([twoFrames, framesTimeout])
 
       // 甘特图真实内容宽（区间夹紧用它：导出卡片本身可能比内容宽，不能用卡片宽度判断越界）
       const ganttContentW = Math.max(ganttView?.scrollWidth ?? 0, ganttContainer?.scrollWidth ?? 0)
@@ -566,16 +596,28 @@ export default function GanttPage() {
       if (exportRange && metrics && ganttView && ganttSvg && gridHeader && ganttContainer) {
         const [rs, re] = exportRange
         // 起止都对齐到刻度列边界：结束日所在列必须完整纳入（避免半列截断），
-        // 月视图列边界即日历月（gantt_start 为月初），天/周视图按 step 取整
+        // 月视图按等距月列（月序号 × 列宽，与刻度线/表头一致），天/周视图按 step 取整
         const startX = dateToColumnStart(rs.format('YYYY-MM-DD'), metrics)
         const endX = dateToColumnEnd(re.format('YYYY-MM-DD'), metrics)
-        // 区间可能超出已渲染窗口：起点夹紧到可见范围，终点夹紧到内容右缘
+        /**
+         * 三段 clamp，各管一件事：
+         * ① offsetX：区间起点夹到 [0, 内容宽 - 1列]。起点早于渲染窗口时从左缘截取；
+         *    起点晚于右缘时退到最后一列，至少还能导出一列。
+         * ② desiredWidth：区间期望宽度 = 终点 - 起点（不足一列补足一列，避免 0 宽图）。
+         *    注意起点可能为负（区间跨到渲染窗口之前），此时 endX - startX 大于实际可见量，
+         *    所以还要 ③。
+         * ③ availableWidth：从**未夹紧**的起点到内容右缘的可用量（同样不足一列补足一列），
+         *    用 min(desired, available) 收口。原实现用「终点夹到内容右缘」，
+         *    在 startX < 0 且跨度大于内容宽时会把宽度算成 contentW - offsetX 而过度收窄。
+         */
         const maxOffsetX = Math.max(0, ganttContentW - metrics.columnWidth)
         const offsetX = Math.min(Math.max(0, startX), maxOffsetX)
-        let rangeWidth = Math.max(metrics.columnWidth, endX - startX)
-        if (offsetX + rangeWidth > ganttContentW) {
-          rangeWidth = Math.max(metrics.columnWidth, ganttContentW - offsetX)
-        }
+        const desiredWidth = Math.max(metrics.columnWidth, endX - startX)
+        const availableWidth = Math.max(
+          metrics.columnWidth,
+          ganttContentW - Math.max(0, startX),
+        )
+        const rangeWidth = Math.min(desiredWidth, availableWidth)
         if (endX <= 0 || startX >= ganttContentW) {
           message.warning('所选导出区间超出当前渲染的时间范围，已按可见部分导出')
         }
@@ -586,9 +628,20 @@ export default function GanttPage() {
         ganttContainer.style.overflow = 'hidden'
         ganttContainer.style.width = `${rangeWidth}px`
         node.style.overflow = 'hidden'
-        // 壳层宽度按实测盒子额外占位收窄，使导出图左右边框完整、宽度与区间严格一致
-        ganttView.style.width = `${Math.ceil(rangeWidth + boxExtrasX(ganttView))}px`
-        node.style.width = `${Math.ceil(rangeWidth + boxExtrasX(ganttView) + boxExtrasX(node))}px`
+        /**
+         * 宽度只把各层的「额外占位」算一次。
+         * 原实现把 .pt-gantt-export 的 padding/border 算了两遍：先加进 style.width，
+         * 随后 captureWidth = node.offsetWidth 在 content-box 下又把它加了一遍
+         * → 导出图右侧多出 34px 纯白（padding 16×2 + border 1×2）。
+         *
+         * 现在的口径（本项目实测为 content-box）：
+         * - .pt-gantt-view：width = rangeWidth（内容宽），自身 2px 边框 → 外宽 rangeWidth + 2
+         * - .pt-gantt-export：width = rangeWidth + 2（正好等于 view 外宽，不留缝也不裁边）
+         * - captureWidth = offsetWidth = (rangeWidth + 2) + 34 = rangeWidth + 36
+         *   = 裁剪宽 + view 边框各一次 + 壳层 padding/border 各一次，左右对称
+         */
+        ganttView.style.width = `${Math.ceil(rangeWidth)}px`
+        node.style.width = `${Math.ceil(rangeWidth + boxExtrasX(ganttView))}px`
       }
 
       /**
@@ -600,7 +653,9 @@ export default function GanttPage() {
         node.scrollHeight +
         (parseFloat(nodeCS.borderTopWidth) || 0) +
         (parseFloat(nodeCS.borderBottomWidth) || 0)
-      const captureWidth = Math.min(node.offsetWidth, SAFE_SIDE)
+      // 至少保证一个刻度列的宽度：宽度测量异常时也不至于导出成空白细条
+      const minCaptureWidth = metrics ? Math.ceil(metrics.columnWidth) : 1
+      const captureWidth = Math.min(Math.max(node.offsetWidth, minCaptureWidth), SAFE_SIDE)
       const captureHeight = Math.min(finalHeight, SAFE_SIDE)
       // canvas 单边上限约 16384px：ratio 同时作用在宽高两个方向，必须两个方向都夹紧，
       // 否则窄区间 + 高图会把高度顶破上限导致导出失败/全黑；再封顶 4 倍，避免无意义的放大
@@ -644,7 +699,10 @@ export default function GanttPage() {
       message.error(`导出图片失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
       for (const item of saved) item.el.style.cssText = item.cssText
+      // cssText 已整体还原，但 pointer-events 可能不在快照里（本轮才加上去的），单独再兜一次
+      if (ganttView) ganttView.style.pointerEvents = previousPointerEvents
       restoreSvgPaint?.()
+      exportingRef.current = false
       setExporting(false)
     }
   }
@@ -679,6 +737,20 @@ export default function GanttPage() {
                 onChange={(v) => setExportRange(v && v[0] && v[1] ? [v[0], v[1]] : null)}
                 disabled={!rangeStart || !rangeEnd}
                 allowClear
+                /**
+                 * 消掉 rc-picker 的开发期警告（它会把整个控件级 `disabled` 展开成
+                 * `[true, true]` 后逐字段校验，见 rc-picker/es/PickerInput/RangePicker.js:546-559）：
+                 * `disabled[i] && 该字段无值 && !allowEmpty[i]` → 报
+                 * 「`disabled` should not set with empty `value`」。
+                 *
+                 * 本题里「无数据时必须禁用」和「禁用时 value 必然是 null」是一对无法拆开的约束，
+                 * 所以只能显式声明两个字段可为空来满足它的校验前提：
+                 * - 不用 `disabled={!exportRange}`：那样用户点「全部」清空区间后控件会变灰，
+                 *   再也选不回来（行为变化）；
+                 * - 不用「空值传 undefined」：rc-picker 的 isIndexEmpty 对 undefined 同样判空，警告照旧。
+                 * 行为不变：onChange 已把「只选了一头」的区间归一成 null（= 导出全部）。
+                 */
+                allowEmpty={[true, true]}
                 placeholder={['导出起始日', '导出结束日']}
                 style={{ width: 240 }}
               />
