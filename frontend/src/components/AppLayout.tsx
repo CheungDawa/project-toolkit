@@ -17,11 +17,12 @@ import {
   TeamOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
-import { Breadcrumb, Button, Layout, Menu, Select, Tag, Typography } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { Breadcrumb, Button, Layout, Menu, Select, Spin, Tag, Typography } from 'antd'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { listProjects, type Project } from '../api/projects'
+import ErrorBoundary from './ErrorBoundary'
 import { useProjectContext } from '../hooks/useProjectContext'
 
 const { Header, Content } = Layout
@@ -335,7 +336,29 @@ export default function AppLayout() {
           ) : null}
         </Header>
         <Content style={{ margin: 16 }}>
-          <Outlet />
+          {/* 内容区两级兜底：ErrorBoundary 在外、Suspense 在内，侧边栏/顶栏始终在边界之外。
+              发版后旧标签页切页导致 chunk 404 时，只有内容区降级为「页面加载失败」，导航仍可用。 */}
+          <ErrorBoundary>
+            {/* 路由级懒加载兜底：Suspense 只包内容区，切页时侧边栏/顶栏不闪退（骨架常驻） */}
+            <Suspense
+              fallback={
+                <div
+                  style={{
+                    minHeight: 240,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Spin tip="加载中…" size="large">
+                    <div style={{ width: 120, height: 60 }} />
+                  </Spin>
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </ErrorBoundary>
         </Content>
       </Layout>
       <style>{`

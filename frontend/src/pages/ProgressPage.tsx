@@ -1,6 +1,12 @@
 import { CameraOutlined } from '@ant-design/icons'
-import * as echarts from 'echarts'
 import { App, Button, Card, Empty, Segmented, Space, Table, Tag, Typography } from 'antd'
+import type { TableProps } from 'antd'
+// echarts 按需引入（P0-1）：只注册实际使用的图表/组件/渲染器，避免整包进入首屏依赖
+import { LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import * as echarts from 'echarts/core'
+import type { EChartsType } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
@@ -8,6 +14,9 @@ import type { TaskItem } from '../api/stage2'
 import { listTasks } from '../api/stage2'
 import type { BurndownResponse, SnapshotItem } from '../api/stage5'
 import { burndown, captureSnapshot, listSnapshots } from '../api/stage5'
+
+// 燃尽图使用折线图 + 直角坐标系（含时间轴）+ 提示框 + 图例，渲染器为 Canvas
+echarts.use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
 
 /** 日期加 N 天，返回 YYYY-MM-DD */
 function addDays(iso: string, days: number): string {
@@ -22,6 +31,17 @@ function daysBetween(fromIso: string, toIso: string): number {
   const to = new Date(`${toIso}T00:00:00`).getTime()
   return Math.round((to - from) / 86400000)
 }
+
+/** 快照记录表列定义不读取任何组件状态，提到模块级：渲染间引用恒定，分页/列宽不被重置 */
+const SNAPSHOT_COLUMNS: TableProps<SnapshotItem>['columns'] = [
+  { title: '日期', dataIndex: 'snapshot_date', width: 120 },
+  { title: '任务总数', dataIndex: 'total_tasks', width: 100 },
+  { title: '已完成', dataIndex: 'completed_tasks', width: 90 },
+  { title: '剩余任务', dataIndex: 'remaining_tasks', width: 100 },
+  { title: '总工时', dataIndex: 'total_hours', width: 90, render: (v: number) => v.toFixed(1) },
+  { title: '剩余工时', dataIndex: 'remaining_hours', width: 90, render: (v: number) => v.toFixed(1) },
+  { title: '采集时间', dataIndex: 'captured_at', render: (v: string) => v.slice(0, 19).replace('T', ' ') },
+]
 
 /** 理想线（前端按计划日期计算，替代后端以首份快照为起点的口径） */
 interface IdealLine {
@@ -45,6 +65,8 @@ export default function ProgressPage() {
   const [metric, setMetric] = useState<'tasks' | 'hours'>('tasks')
   const [loading, setLoading] = useState(false)
   const chartRef = useRef<HTMLDivElement>(null)
+  /** 图表实例：容器挂载时创建一次，指标切换只 setOption，卸载时释放 */
+  const chartInstanceRef = useRef<EChartsType | null>(null)
 
   const fetchData = useCallback(async () => {
     if (!projectId) return
@@ -112,10 +134,28 @@ export default function ProgressPage() {
     return { start, end, durationDays, points, note, fallback }
   }, [data, tasks])
 
+  /** 图表容器是否存在（无历史快照时不渲染容器，直接展示 Empty） */
+  const hasChart = data !== null && data.snapshots.length > 0
+
+  // 实例生命周期：容器挂载后 init 一次；窗口尺寸变化时 resize；容器卸载/组件卸载时 dispose
   useEffect(() => {
     const container = chartRef.current
-    if (!container || !data) return
-    const chart = echarts.init(container)
+    if (!hasChart || !container) return
+    const instance = echarts.init(container)
+    chartInstanceRef.current = instance
+    const onResize = () => instance.resize()
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      instance.dispose()
+      chartInstanceRef.current = null
+    }
+  }, [hasChart])
+
+  // 数据或指标变化：复用已有实例，notMerge 覆盖旧配置，避免重建实例导致的闪动与内存增长
+  useEffect(() => {
+    const instance = chartInstanceRef.current
+    if (!instance || !data) return
     const points = data.snapshots
     const series: Record<string, unknown>[] = []
     const idealData =
@@ -161,21 +201,19 @@ export default function ProgressPage() {
         })
       }
     }
-    chart.setOption({
-      tooltip: { trigger: 'axis' },
-      legend: { data: series.map((s) => String(s.name)) },
-      grid: { left: 60, right: 20, top: 40, bottom: 40 },
-      xAxis: { type: 'time' },
-      yAxis: { type: 'value', minInterval: 1 },
-      series,
-    })
-    const onResize = () => chart.resize()
-    window.addEventListener('resize', onResize)
-    return () => {
-      window.removeEventListener('resize', onResize)
-      chart.dispose()
-    }
+    instance.setOption(
+      {
+        tooltip: { trigger: 'axis' },
+        legend: { data: series.map((s) => String(s.name)) },
+        grid: { left: 60, right: 20, top: 40, bottom: 40 },
+        xAxis: { type: 'time' },
+        yAxis: { type: 'value', minInterval: 1 },
+        series,
+      },
+      true,
+    )
   }, [data, metric, idealLine])
+
 
   const handleCapture = async () => {
     if (!projectId) return
@@ -188,7 +226,7 @@ export default function ProgressPage() {
     }
   }
 
-  const isEmpty = !data || data.snapshots.length === 0
+  const isEmpty = !hasChart
 
   return (
     <div>
@@ -232,15 +270,7 @@ export default function ProgressPage() {
           loading={loading}
           dataSource={snapshots}
           pagination={{ pageSize: 10 }}
-          columns={[
-            { title: '日期', dataIndex: 'snapshot_date', width: 120 },
-            { title: '任务总数', dataIndex: 'total_tasks', width: 100 },
-            { title: '已完成', dataIndex: 'completed_tasks', width: 90 },
-            { title: '剩余任务', dataIndex: 'remaining_tasks', width: 100 },
-            { title: '总工时', dataIndex: 'total_hours', width: 90, render: (v: number) => v.toFixed(1) },
-            { title: '剩余工时', dataIndex: 'remaining_hours', width: 90, render: (v: number) => v.toFixed(1) },
-            { title: '采集时间', dataIndex: 'captured_at', render: (v: string) => v.slice(0, 19).replace('T', ' ') },
-          ]}
+          columns={SNAPSHOT_COLUMNS}
         />
       </Card>
     </div>
