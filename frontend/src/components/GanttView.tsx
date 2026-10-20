@@ -1,7 +1,7 @@
 import Gantt from 'frappe-gantt'
 import '../assets/frappe-gantt.css'
 import '../assets/gantt-extra.css'
-import { useEffect, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 
 /**
  * 任务条输入结构。与 frappe-gantt 的 task 结构保持一致，
@@ -19,6 +19,31 @@ export interface GanttItemInput {
 }
 
 export type GanttViewMode = 'Day' | 'Week' | 'Month'
+
+/**
+ * 供父组件（GanttPage）在导出时读取甘特图自身的像素度量，
+ * 以便把整条时间轴「平移 + 裁剪」到用户选定的日期区间。
+ * frappe-gantt 1.2.2 的 start/end options 并不约束渲染窗口，
+ * 因此区间导出只能靠读取渲染后的列宽与起始日期反算像素偏移。
+ */
+export interface GanttViewHandle {
+  getMetrics: () => {
+    /** 渲染窗口左边界（含 padding），已归一到当天 0 点 */
+    ganttStart: Date
+    /** 单个刻度列宽（px） */
+    columnWidth: number
+    /** 时间单位：day / week / month / year / hour */
+    unit: string
+    /** 每列跨越的单位数：Day=1、Week=7、Month=1 */
+    step: number
+  } | null
+}
+
+/** frappe-gantt 实例上我们实际用到的字段（库未导出类型，这里自声明） */
+interface GanttInstance {
+  gantt_start: Date
+  config: { column_width: number; unit: string; step: number }
+}
 
 /** 周末底纹颜色（frappe-gantt 的 holidays option 以颜色为 key） */
 const WEEKEND_FILL = '#f5f5f5'
@@ -64,7 +89,7 @@ export function resolveBarClass(item: GanttItemInput, today: string = toDateStri
   return 'pt-todo'
 }
 
-export default function GanttView({
+const GanttView = forwardRef<GanttViewHandle, GanttViewProps>(({
   items,
   language = 'zh',
   viewMode = 'Day',
@@ -74,7 +99,7 @@ export default function GanttView({
   onProgressChange,
   onTaskClick,
   onViewModeChange,
-}: GanttViewProps) {
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
   // 仅在首次挂载时自动滚动到「今日」；后续重建（切换视图/刷新数据）保留用户当前滚动位置，避免拖动后被拉回今日
   const didScrollRef = useRef(false)
@@ -86,6 +111,8 @@ export default function GanttView({
    * 因此 date_change 事件在一次拖动里会连续触发几十次；这里只登记，等鼠标释放后一次性提交。
    */
   const pendingDatesRef = useRef(new Map<string, { start: string; end: string }>())
+  /** frappe-gantt 实例引用：用于向父组件暴露渲染后的像素度量 */
+  const ganttRef = useRef<GanttInstance | null>(null)
 
   /**
    * 回调放进 ref：甘特图实例只在必要依赖变化时重建，
@@ -121,7 +148,7 @@ export default function GanttView({
 
     const ganttItems = items.map((item) => ({ ...item, custom_class: resolveBarClass(item) }))
 
-    new Gantt(container, ganttItems, {
+    ganttRef.current = new Gantt(container, ganttItems, {
       language,
       snap_at: '1d',
       view_mode: viewMode,
@@ -155,7 +182,7 @@ export default function GanttView({
           handlersRef.current.onViewModeChange?.(name)
         }
       },
-    })
+    }) as unknown as GanttInstance
 
     // 还原上次重建前的横向滚动位置（保存后重新渲染不要跳回最左侧）
     const created = container.querySelector<HTMLElement>('.gantt-container')
@@ -191,5 +218,24 @@ export default function GanttView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, language, viewMode, holidayKey, weekendKey])
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      getMetrics: () => {
+        const g = ganttRef.current
+        if (!g) return null
+        return {
+          ganttStart: g.gantt_start,
+          columnWidth: g.config.column_width,
+          unit: g.config.unit,
+          step: g.config.step,
+        }
+      },
+    }),
+    [],
+  )
+
   return <div ref={containerRef} className="pt-gantt-view" />
-}
+})
+
+export default GanttView

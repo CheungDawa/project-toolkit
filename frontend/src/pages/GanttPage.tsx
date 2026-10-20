@@ -1,9 +1,10 @@
-import { App, Button, Card, Checkbox, Segmented, Space, Tag, Typography } from 'antd'
+import { App, Button, Card, Checkbox, DatePicker, Segmented, Space, Tag, Tooltip, Typography } from 'antd'
 import { toPng } from 'html-to-image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import dayjs, { type Dayjs } from 'dayjs'
 
-import type { GanttItemInput, GanttViewMode } from '../components/GanttView'
+import type { GanttItemInput, GanttViewHandle, GanttViewMode } from '../components/GanttView'
 import GanttView from '../components/GanttView'
 import { getProject } from '../api/projects'
 import type { DependencyItem, Milestone, TaskItem } from '../api/stage2'
@@ -71,6 +72,9 @@ function isExportableNode(domNode: HTMLElement): boolean {
  * 于是依赖样式表着色的 <rect>/<path>/<text> 在克隆体里没有任何内联样式，
  * 浏览器按 SVG 初始值 fill=black 渲染 → 导出的甘特图正文整片黑（HTML 表头/图例却正常）。
  * 把 computed 颜色写成同名「呈现属性」后，深拷贝会把它一起带走，不依赖库的样式复制逻辑。
+ *
+ * opacity / visibility 也必须内联：拖拽手柄（.handle）在实时页面里 opacity:0 不可见，
+ * 克隆体丢了这条规则后会按 opacity=1 渲染成黑色小方块贴在条两端。
  */
 const SVG_PAINT_ATTRS = [
   'fill',
@@ -83,6 +87,8 @@ const SVG_PAINT_ATTRS = [
   'stroke-dashoffset',
   'stroke-linecap',
   'stroke-linejoin',
+  'opacity',
+  'visibility',
   'dominant-baseline',
   'text-anchor',
   'font-size',
@@ -117,6 +123,83 @@ function inlineSvgPaint(root: HTMLElement): () => void {
       }
     }
   }
+}
+
+/**
+ * 复刻 frappe-gantt 的日期差函数（源码 node_modules/frappe-gantt/dist/frappe-gantt.es.js
+ * 的 utils/date.js::diff），口径必须逐位一致，否则区间导出的像素偏移会和库渲染错位：
+ * - day：毫秒差（含时区偏移修正）/ 86400000
+ * - month：(年差×12 + 月差) + 日期/31，且日期小于基准日期时再减 1
+ * - 结果统一按两位小数四舍五入（库用 Math.round(x*100)/100）
+ */
+function frappeDateDiff(target: Date, ganttStart: Date, unit: string): number {
+  const ms =
+    target.getTime() -
+    ganttStart.getTime() +
+    (ganttStart.getTimezoneOffset() - target.getTimezoneOffset()) * 60000
+  const months =
+    (target.getFullYear() - ganttStart.getFullYear()) * 12 +
+    (target.getMonth() - ganttStart.getMonth()) +
+    target.getDate() / 31 -
+    (target.getDate() < ganttStart.getDate() ? 1 : 0)
+  const table: Record<string, number> = {
+    millisecond: ms,
+    second: ms / 1000,
+    minute: ms / 60000,
+    hour: ms / 3600000,
+    day: ms / 86400000,
+    month: months,
+    year: months / 12,
+  }
+  const value = table[unit] ?? table.day
+  return Math.round(value * 100) / 100
+}
+
+/**
+ * 把日期换算成甘特图内的横向像素偏移（与 frappe-gantt 渲染公式一致）。
+ * 库内部：`x = diff(date, gantt_start, unit) / step * column_width`
+ * （bar.js::compute_x 与 setup_date_values 均用此式，gantt_start 由
+ * setup_gantt_dates 归一到当天 0 点）。这里不依赖库私有 API，用等价复算。
+ * - day/week 视图 unit='day'、step 分别为 1 / 7
+ * - month 视图 unit='month'（gantt_start 为月初，列边界即日历月）
+ */
+function dateToX(
+  dateStr: string,
+  metrics: { ganttStart: Date; columnWidth: number; unit: string; step: number },
+): number {
+  const target = new Date(`${dateStr}T00:00:00`)
+  return (
+    (frappeDateDiff(target, metrics.ganttStart, metrics.unit) / metrics.step) * metrics.columnWidth
+  )
+}
+
+/** 取某日期在甘特图刻度列中的左缘像素（日期所在列的起始位置，而非日期自身的偏移） */
+function dateToColumnStart(
+  dateStr: string,
+  metrics: { ganttStart: Date; columnWidth: number; unit: string; step: number },
+): number {
+  if (metrics.unit === 'month') {
+    // 月视图列边界=日历月：对齐到当月 1 号（库在月视图下 gantt_start 必为月初）
+    return dateToX(dayjs(dateStr).startOf('month').format('YYYY-MM-DD'), metrics)
+  }
+  // 天/周视图：向下取整到所在列（day step=1 时即日期自身）
+  const target = new Date(`${dateStr}T00:00:00`)
+  const diffDays = frappeDateDiff(target, metrics.ganttStart, 'day')
+  return Math.floor(diffDays / metrics.step) * metrics.columnWidth
+}
+
+/** 取某日期所在刻度列的右缘像素（把结束日完整包进一列，避免半列截断） */
+function dateToColumnEnd(
+  dateStr: string,
+  metrics: { ganttStart: Date; columnWidth: number; unit: string; step: number },
+): number {
+  if (metrics.unit === 'month') {
+    // 月视图：右缘=下月初的像素位置（库的 dates 递推即 add(gantt_start, k, 'month')）
+    return dateToX(dayjs(dateStr).add(1, 'month').startOf('month').format('YYYY-MM-DD'), metrics)
+  }
+  const target = new Date(`${dateStr}T00:00:00`)
+  const diffDays = frappeDateDiff(target, metrics.ganttStart, 'day')
+  return (Math.floor(diffDays / metrics.step) + 1) * metrics.columnWidth
 }
 
 /**
@@ -234,8 +317,12 @@ export default function GanttPage() {
   const [showSummary, setShowSummary] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [generatedAt, setGeneratedAt] = useState(() => formatStamp(new Date()))
+  /** 导出区间（默认 null = 导出整条时间轴）；选中后只截取该区间 */
+  const [exportRange, setExportRange] = useState<[Dayjs, Dayjs] | null>(null)
+  const didInitRange = useRef(false)
 
   const exportRef = useRef<HTMLDivElement>(null)
+  const ganttRef = useRef<GanttViewHandle>(null)
 
   const fetchData = useCallback(async () => {
     if (!projectId) return
@@ -354,6 +441,14 @@ export default function GanttPage() {
     return { items: result, rangeStart: start, rangeEnd: end }
   }, [tasks, deps, milestones, showSummary])
 
+  // 数据首次加载后，把导出区间默认设为整条计划区间（与「导出全部」等价），用户可再收窄
+  useEffect(() => {
+    if (!didInitRange.current && rangeStart && rangeEnd) {
+      setExportRange([dayjs(rangeStart), dayjs(rangeEnd)])
+      didInitRange.current = true
+    }
+  }, [rangeStart, rangeEnd])
+
   const handleDateChange = async (taskId: string, start: string, end: string) => {
     if (taskId.startsWith(SUMMARY_PREFIX) || taskId.startsWith(MILESTONE_PREFIX)) {
       message.info('汇总条与里程碑不支持拖动改期：请在 WBS 页维护子任务日期，或在里程碑页维护里程碑')
@@ -413,13 +508,17 @@ export default function GanttPage() {
      */
     const ganttView = node.querySelector<HTMLElement>('.pt-gantt-view')
     const ganttContainer = node.querySelector<HTMLElement>('.gantt-container')
+    const ganttSvg = node.querySelector<SVGElement>('svg.gantt')
+    const gridHeader = node.querySelector<HTMLElement>('.grid-header')
     const saved: { el: HTMLElement; cssText: string }[] = []
-    const remember = (el: HTMLElement | null) => {
-      if (el) saved.push({ el, cssText: el.style.cssText })
+    const remember = (el: HTMLElement | SVGElement | null) => {
+      if (el) saved.push({ el: el as HTMLElement, cssText: el.style.cssText })
     }
     remember(node)
     remember(ganttView)
     remember(ganttContainer)
+    remember(ganttSvg)
+    remember(gridHeader)
     let restoreSvgPaint: (() => void) | null = null
 
     try {
@@ -428,44 +527,93 @@ export default function GanttPage() {
       // 让「生成时间」先落盘到 DOM 再截图（React 18 的批处理需要让出一次事件循环）
       await new Promise((resolve) => window.setTimeout(resolve, 60))
 
-      const contentW = Math.max(
-        node.scrollWidth,
-        ganttView?.scrollWidth ?? 0,
-        ganttContainer?.scrollWidth ?? 0,
-        node.offsetWidth,
-      )
-      const contentH = node.scrollHeight
+      // 甘特图真实内容宽（区间夹紧用它：导出卡片本身可能比内容宽，不能用卡片宽度判断越界）
+      const ganttContentW = Math.max(ganttView?.scrollWidth ?? 0, ganttContainer?.scrollWidth ?? 0)
+      const contentW = Math.max(ganttContentW, node.scrollWidth, node.offsetWidth)
+      /** 读取元素左右内边距 + 边框之和：把「内容宽度」换算成样式宽度，
+       *  同一公式在 border-box 与 content-box 下都成立（加的是盒子额外占位） */
+      const boxExtrasX = (el: Element): number => {
+        const cs = window.getComputedStyle(el)
+        return (
+          (parseFloat(cs.paddingLeft) || 0) +
+          (parseFloat(cs.paddingRight) || 0) +
+          (parseFloat(cs.borderLeftWidth) || 0) +
+          (parseFloat(cs.borderRightWidth) || 0)
+        )
+      }
       /**
        * 把元素撑到「内容宽度 + 自身左右内边距/边框 + 少量余量」：
        * 项目全局若使用 box-sizing: border-box，只写内容宽度会让右侧被裁掉几十像素。
        */
       const expand = (el: HTMLElement | null, contentWidth: number) => {
         if (!el) return
-        const cs = window.getComputedStyle(el)
-        const extra =
-          (parseFloat(cs.paddingLeft) || 0) +
-          (parseFloat(cs.paddingRight) || 0) +
-          (parseFloat(cs.borderLeftWidth) || 0) +
-          (parseFloat(cs.borderRightWidth) || 0) +
-          4
-        el.style.width = `${Math.ceil(contentWidth + extra)}px`
+        el.style.width = `${Math.ceil(contentWidth + boxExtrasX(el) + 4)}px`
         el.style.overflow = 'visible'
       }
       expand(node, contentW)
       expand(ganttView, contentW)
       expand(ganttContainer, contentW)
 
-      // 浏览器 canvas 单边上限约 16384px，超出会导出全黑/失败。
-      // 因此把截图尺寸限制到 SAFE_SIDE 内；超宽时间轴会截取左侧可见范围（标题区已写明完整计划区间）。
-      const captureWidth = Math.min(contentW, SAFE_SIDE)
-      const captureHeight = Math.min(contentH, SAFE_SIDE)
+      // 区间导出：把整条时间轴「平移 + 裁剪」到用户选定的日期范围。
+      // frappe-gantt 1.2.2 的 start/end options 不约束渲染窗口，只能靠读取渲染后的
+      // 列宽与起始日期反算像素偏移，再对 SVG 与表头做 translateX 并裁掉溢出部分。
+      const metrics = exportRange ? ganttRef.current?.getMetrics() : null
+      let cropWidth = contentW
+      if (exportRange && (!metrics || !ganttView || !ganttSvg || !gridHeader || !ganttContainer)) {
+        // 甘特图实例未就绪时拿不到像素度量：降级为整条时间轴导出，并明确告知用户
+        message.warning('未能读取甘特图渲染度量，已按整条时间轴导出')
+      }
+      if (exportRange && metrics && ganttView && ganttSvg && gridHeader && ganttContainer) {
+        const [rs, re] = exportRange
+        // 起止都对齐到刻度列边界：结束日所在列必须完整纳入（避免半列截断），
+        // 月视图列边界即日历月（gantt_start 为月初），天/周视图按 step 取整
+        const startX = dateToColumnStart(rs.format('YYYY-MM-DD'), metrics)
+        const endX = dateToColumnEnd(re.format('YYYY-MM-DD'), metrics)
+        // 区间可能超出已渲染窗口：起点夹紧到可见范围，终点夹紧到内容右缘
+        const maxOffsetX = Math.max(0, ganttContentW - metrics.columnWidth)
+        const offsetX = Math.min(Math.max(0, startX), maxOffsetX)
+        let rangeWidth = Math.max(metrics.columnWidth, endX - startX)
+        if (offsetX + rangeWidth > ganttContentW) {
+          rangeWidth = Math.max(metrics.columnWidth, ganttContentW - offsetX)
+        }
+        if (endX <= 0 || startX >= ganttContentW) {
+          message.warning('所选导出区间超出当前渲染的时间范围，已按可见部分导出')
+        }
+        cropWidth = rangeWidth
+        // 平移内层内容使区间起点对齐左边缘，再裁掉容器外的溢出
+        ganttSvg.style.transform = `translateX(${-offsetX}px)`
+        gridHeader.style.transform = `translateX(${-offsetX}px)`
+        ganttContainer.style.overflow = 'hidden'
+        ganttContainer.style.width = `${rangeWidth}px`
+        node.style.overflow = 'hidden'
+        // 壳层宽度按实测盒子额外占位收窄，使导出图左右边框完整、宽度与区间严格一致
+        ganttView.style.width = `${Math.ceil(rangeWidth + boxExtrasX(ganttView))}px`
+        node.style.width = `${Math.ceil(rangeWidth + boxExtrasX(ganttView) + boxExtrasX(node))}px`
+      }
+
+      /**
+       * 全部宽度变更完成后再测量高宽：区间导出收窄宽度后，标题/图例会换行、高度变大，
+       * 若沿用变更前测的高度会把图例裁掉；offsetWidth 即元素外宽（含内边距与边框）。
+       */
+      const nodeCS = window.getComputedStyle(node)
+      const finalHeight =
+        node.scrollHeight +
+        (parseFloat(nodeCS.borderTopWidth) || 0) +
+        (parseFloat(nodeCS.borderBottomWidth) || 0)
+      const captureWidth = Math.min(node.offsetWidth, SAFE_SIDE)
+      const captureHeight = Math.min(finalHeight, SAFE_SIDE)
+      // canvas 单边上限约 16384px：ratio 同时作用在宽高两个方向，必须两个方向都夹紧，
+      // 否则窄区间 + 高图会把高度顶破上限导致导出失败/全黑；再封顶 4 倍，避免无意义的放大
       const pixelRatio = Math.max(
         0.5,
-        Math.floor((SAFE_SIDE / Math.max(contentW, contentH)) * 100) / 100,
+        Math.min(
+          4,
+          Math.floor(Math.min(SAFE_SIDE / cropWidth, SAFE_SIDE / finalHeight) * 100) / 100,
+        ),
       )
-      if (contentW > SAFE_SIDE || contentH > SAFE_SIDE) {
+      if (cropWidth > SAFE_SIDE || finalHeight > SAFE_SIDE) {
         message.warning(
-          `时间轴较宽（${Math.round(contentW)}×${Math.round(contentH)}），已自动缩小清晰度并截取可见范围以保证图片可用；如需完整导出请先切到「周/月」视图再导出`,
+          `时间轴较宽（${Math.round(cropWidth)}×${Math.round(finalHeight)}），已自动缩小清晰度以保证图片可用；如需更清晰可切到「周/月」视图再导出`,
         )
       }
 
@@ -482,8 +630,11 @@ export default function GanttPage() {
         filter: isExportableNode,
       })
 
+      const rangeLabel = exportRange
+        ? `_${exportRange[0].format('YYYYMMDD')}-${exportRange[1].format('YYYYMMDD')}`
+        : ''
       const link = document.createElement('a')
-      link.download = `甘特图_${sanitizeFileName(projectName)}_${formatFileStamp(new Date())}.png`
+      link.download = `甘特图_${sanitizeFileName(projectName)}${rangeLabel}_${formatFileStamp(new Date())}.png`
       link.href = dataUrl
       document.body.appendChild(link)
       link.click()
@@ -522,6 +673,21 @@ export default function GanttPage() {
             <Checkbox checked={showSummary} onChange={(e) => setShowSummary(e.target.checked)}>
               显示汇总条
             </Checkbox>
+            <Tooltip title="选择要导出的日期区间；清空（或点「全部」）则导出整条时间轴。建议配合「周/月」视图使用，图片更窄更易读。">
+              <DatePicker.RangePicker
+                value={exportRange}
+                onChange={(v) => setExportRange(v && v[0] && v[1] ? [v[0], v[1]] : null)}
+                disabled={!rangeStart || !rangeEnd}
+                allowClear
+                placeholder={['导出起始日', '导出结束日']}
+                style={{ width: 240 }}
+              />
+            </Tooltip>
+            {exportRange ? (
+              <Button size="small" onClick={() => setExportRange(null)}>
+                全部
+              </Button>
+            ) : null}
             {saving ? <Tag color="processing">保存中…</Tag> : null}
             <Button onClick={() => void fetchData()} loading={loading}>
               刷新
@@ -539,7 +705,7 @@ export default function GanttPage() {
           才一次性提交保存，因此可以连续拖 2–3 天再松手。汇总条与里程碑仅供查看。
         </Typography.Paragraph>
         <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-          视图说明：日=逐日刻度；周=按周标注（上排月份 / 下排每周起始日）；月=逐月。导出图片建议先切到「周 / 月」视图，图片宽度更小、更易阅读；进入 WBS 页会拉取最新数据。
+          视图说明：日=逐日刻度；周=按周标注（上排月份 / 下排每周起始日）；月=逐月。导出图片建议先切到「周 / 月」视图，图片宽度更小、更易阅读；工具栏的日期区间选择器可只截取某段日期导出，不选则导出整条时间轴；进入 WBS 页会拉取最新数据。
         </Typography.Paragraph>
         {ganttItems.length === 0 && !loading ? (
           <Typography.Text type="secondary">暂无已排期任务：请先在 WBS 页为任务设置计划日期。</Typography.Text>
@@ -552,12 +718,16 @@ export default function GanttPage() {
               {projectName ? `${projectName} · 项目甘特图` : '项目甘特图'}
             </div>
             <div style={{ marginTop: 4, fontSize: 12, color: '#7c7c7c' }}>
+              {exportRange
+                ? `导出范围：${exportRange[0].format('YYYY-MM-DD')} ~ ${exportRange[1].format('YYYY-MM-DD')} ｜ `
+                : '导出范围：全部时间轴 ｜ '}
               视图：{VIEW_MODE_LABEL[mode]}视图 ｜ 计划区间：{rangeText} ｜ 已排期任务 {leafCount} 项
               {showSummary ? '（含汇总条）' : ''} ｜ 生成时间：{generatedAt}
             </div>
           </div>
 
           <GanttView
+            ref={ganttRef}
             items={ganttItems}
             viewMode={mode}
             holidayDates={holidayDates}
