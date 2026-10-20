@@ -57,6 +57,30 @@ export interface TaskPayload {
   deliverable_name?: string | null
 }
 
+/**
+ * 批量更新接口（PATCH /projects/{id}/tasks/bulk）的单条变更。
+ *
+ * 只含 progress / status / owner：日期字段不在该接口范围内（批量改日期要重算工期，
+ * 后端有意排除，避免 500 条任务时的隐性放大），所以带计划日期的批量修改仍走单条接口。
+ * owner 允许显式 null（界面「留空表示清空」依赖它，后端按 exclude_unset 区分
+ * 「没传」与「传了 null」）。
+ */
+export interface TaskBulkItem {
+  id: string
+  progress?: number
+  status?: string
+  owner?: string | null
+}
+
+/**
+ * 批量更新结果：not_found 是「不存在 / 不属于该项目 / 已被软删除」的 id 列表，
+ * 这些条目被跳过而不会让整单失败，因此调用方必须自行提示。
+ */
+export interface TaskBulkResult {
+  updated: number
+  not_found: string[]
+}
+
 export interface Milestone {
   id: string
   project_id: string
@@ -97,6 +121,16 @@ export const createTask = (projectId: string, payload: TaskPayload) =>
 
 export const updateTask = (taskId: string, payload: Partial<TaskPayload>) =>
   api.patch<TaskItem>(`/tasks/${taskId}`, payload)
+
+/**
+ * 批量更新任务（一次事务、一次 commit）：只写请求里显式给出的字段。
+ *
+ * - 后端上限 items 1~500 条，超过时要由调用方自行切批；
+ * - 语义与单条 PATCH 一致但不做日期/工期重算；
+ * - 缺失的 id 进 not_found，不会让整单失败（updated 可能小于 items.length）。
+ */
+export const bulkUpdateTasks = (projectId: string, items: TaskBulkItem[]): Promise<TaskBulkResult> =>
+  api.patch<TaskBulkResult>(`/projects/${projectId}/tasks/bulk`, { items })
 
 export const deleteTask = (taskId: string) => api.delete(`/tasks/${taskId}`)
 
