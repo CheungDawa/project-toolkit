@@ -27,6 +27,7 @@ import { getCalendar, listMilestones, listTasks, updateTask } from '../api/stage
 // 这里在 useMemo 里现建现用、只读，满足前提；若将来改成跨渲染复用一个 map，请改调
 // buildDescendantRanges() 一次拿全表，避免读到过期聚合。
 import { buildChildrenMap, compareWbsCode, descendantRange } from '../utils/wbsTree'
+import { buildScheduleReport } from '../utils/reportBuilders'
 
 /** 视图模式中文名，用于导出图标题 */
 const VIEW_MODE_LABEL: Record<GanttViewMode, string> = { Day: '日', Week: '周', Month: '月' }
@@ -756,8 +757,8 @@ export default function GanttPage() {
             <ExportMenu
               supportsPng
               onExportPng={handleExportPng}
-              printTargetId="gantt-print-area"
               buttonText="导出"
+              shareReport={() => buildScheduleReport(projectName || '项目', tasks)}
             />
             <Button onClick={() => navigate(`/projects/${projectId}/wbs`)}>去 WBS 编辑</Button>
           </Space>
@@ -781,8 +782,8 @@ export default function GanttPage() {
         ) : null}
 
         {/* 导出范围：标题区 + 甘特图本体 + 图例，整块作为 PNG 导出；
-            gantt-print-area 为「分享导出 → PDF」的打印容器（见 styles/print.css） */}
-        <div id="gantt-print-area">
+            分享导出（PDF/HTML 排期表）走 ExportMenu，另开干净文档打印，不经过本容器 */}
+        <div>
           <div ref={exportRef} className="pt-gantt-export">
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 18, fontWeight: 600, color: '#171717' }}>

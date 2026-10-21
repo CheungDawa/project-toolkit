@@ -42,6 +42,8 @@ import {
   uploadAttachment,
 } from '../api/stage5'
 import ExportMenu from '../components/ExportMenu'
+import { useProjectContext } from '../hooks/useProjectContext'
+import { antdTableReport } from '../utils/reportBuilders'
 
 const CATEGORIES = ['设备到货', '安装调试', '测试', '培训', '试运行', '验收', '运维移交']
 const SUBMIT_STATUS = ['未提交', '已提交', '已归档']
@@ -75,6 +77,8 @@ export default function DeliverablesPage() {
   const [editing, setEditing] = useState<DeliverableItem | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>()
   const [form] = Form.useForm()
+
+  const projectContext = useProjectContext(projectId)
 
   const fetchData = useCallback(async () => {
     if (!projectId) return
@@ -410,7 +414,19 @@ export default function DeliverablesPage() {
             >
               导出
             </Button>
-            <ExportMenu resource="deliverables" projectId={projectId} />
+            <ExportMenu
+              resource="deliverables"
+              projectId={projectId}
+              shareReport={() =>
+                antdTableReport({
+                  title: `${projectContext.project?.name ?? '项目'} · 交付资料清单`,
+                  meta: `共 ${items.length} 项 · 生成日期 ${new Date().toISOString().slice(0, 10)}`,
+                  columns,
+                  rows: items,
+                  emptyText: '暂无交付资料',
+                })
+              }
+            />
             <Upload accept=".xlsx" showUploadList={false} beforeUpload={file => handleImport(file)}>
               <Button icon={<UploadOutlined />}>导入</Button>
             </Upload>

@@ -21,6 +21,9 @@ import { useParams } from 'react-router-dom'
 import type { Milestone } from '../api/stage2'
 import { createMilestone, deleteMilestone, listMilestones, updateMilestone } from '../api/stage2'
 import ExportMenu from '../components/ExportMenu'
+import { useProjectContext } from '../hooks/useProjectContext'
+import type { ReportConfig } from '../utils/reportHtml'
+import { tableReport } from '../utils/reportBuilders'
 
 /** 本地时区今天的 YYYY-MM-DD（避免 toISOString 的 UTC 偏移问题） */
 function localToday(): string {
@@ -151,6 +154,42 @@ export default function MilestonesPage() {
     return { total: items.length, overdue, upcoming, noDate }
   }, [items])
 
+  const projectContext = useProjectContext(projectId)
+
+  /** 里程碑状态纯文本（与页面状态列同口径：已完成 / 逾期 N 天 / 即将到期 / 原状态） */
+  const milestoneStatusText = (m: Milestone): string => {
+    if (isMilestoneDone(m)) return '已完成'
+    if (m.plan_date) {
+      const diff = daysBetween(localToday(), m.plan_date)
+      if (diff < 0) return `逾期 ${-diff} 天`
+      if (diff <= 7) return '即将到期'
+    }
+    return m.status ?? '—'
+  }
+
+  /** 分享导出：干净 HTML 里程碑计划（含逾期/即将到期判断） */
+  const buildShareReport = (): ReportConfig =>
+    tableReport({
+      title: `${projectContext.project?.name ?? '项目'} · 里程碑计划`,
+      subtitle: '逾期 = 未完成且计划日期已过；即将到期 = 7 天内',
+      meta: `共 ${summary.total} 个里程碑（逾期 ${summary.overdue} · 即将到期 ${summary.upcoming}） · 生成日期 ${new Date().toISOString().slice(0, 10)}`,
+      columns: [
+        { key: 'name', header: '名称', align: 'left' },
+        { key: 'plan', header: '计划日期', align: 'center', width: 120 },
+        { key: 'actual', header: '实际日期', align: 'center', width: 120 },
+        { key: 'status', header: '状态', align: 'center', width: 120 },
+        { key: 'description', header: '说明', align: 'left', width: 220 },
+      ],
+      rows: items.map(m => ({
+        name: m.name,
+        plan: m.plan_date ?? '—',
+        actual: m.actual_date ?? '—',
+        status: milestoneStatusText(m),
+        description: m.description ?? '—',
+      })),
+      emptyText: '暂无里程碑',
+    })
+
   /** 状态列：逾期未完成→红「逾期 N 天」；7 天内到期→橙「即将到期」；已完成→绿；其余显示原状态 */
   const renderStatus = useCallback((m: Milestone) => {
     if (isMilestoneDone(m)) return <Tag color="success">已完成</Tag>
@@ -219,7 +258,11 @@ export default function MilestonesPage() {
         title="里程碑"
         extra={
           <>
-            <ExportMenu resource="milestones" projectId={projectId} />
+            <ExportMenu
+              resource="milestones"
+              projectId={projectId}
+              shareReport={buildShareReport}
+            />
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               新建里程碑
             </Button>

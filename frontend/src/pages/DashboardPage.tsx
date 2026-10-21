@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
 import ExportMenu from '../components/ExportMenu'
+import { buildOverviewReport } from '../utils/reportBuilders'
 
 interface OverviewProject {
   id: string
@@ -1133,7 +1134,10 @@ export default function DashboardPage() {
               {data?.totals.projects ?? 0} 个项目
             </span>
             {/* 跨项目总览导出（overview 资源不传 projectId） */}
-            <ExportMenu resource="overview" />
+            <ExportMenu
+              resource="overview"
+              shareReport={data ? () => buildOverviewReport(data) : undefined}
+            />
           </div>
         </div>
         <Table<OverviewProject>

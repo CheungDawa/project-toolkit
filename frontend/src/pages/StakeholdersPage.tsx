@@ -39,6 +39,9 @@ import {
   listStakeholders,
   updateStakeholder,
 } from '../api/stage3'
+import ExportMenu from '../components/ExportMenu'
+import { useProjectContext } from '../hooks/useProjectContext'
+import { buildStakeholderReport } from '../utils/reportBuilders'
 
 const ATT_KEYS = ['unknown', 'resist', 'neutral', 'support', 'lead'] as const
 const ATT_NAMES: Record<string, string> = {
@@ -139,6 +142,8 @@ const QUAD_STYLE: Record<string, { bg: string; border: string; title: string }> 
 export default function StakeholdersPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const { message } = App.useApp()
+  const projectContext = useProjectContext(projectId)
+  const projectName = projectContext.project?.name ?? '项目'
 
   const [items, setItems] = useState<StakeholderItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -893,11 +898,10 @@ export default function StakeholdersPage() {
           >
             批量设置{selectedKeys.length > 0 ? `（${selectedKeys.length}）` : ''}
           </Button>
-          <Button
-            onClick={() => window.open(`/api/projects/${projectId}/stakeholders/report/export`)}
-          >
-            导出报告
-          </Button>
+          <ExportMenu
+            buttonText="导出报告"
+            shareReport={() => buildStakeholderReport(projectName, filtered)}
+          />
         </Space>
       </Card>
 

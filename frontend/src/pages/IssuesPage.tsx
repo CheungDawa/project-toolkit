@@ -23,6 +23,9 @@ import { useParams } from 'react-router-dom'
 import type { IssueItem } from '../api/stage3'
 import { closeIssue, createIssue, deleteIssue, listIssues, updateIssue } from '../api/stage3'
 import ExportMenu from '../components/ExportMenu'
+import { useProjectContext } from '../hooks/useProjectContext'
+import type { ReportConfig } from '../utils/reportHtml'
+import { tableReport } from '../utils/reportBuilders'
 
 const SEVERITY_TAG: Record<string, string> = { 高: 'red', 中: 'orange', 低: 'green' }
 const CLOSED_STATUS = '已关闭'
@@ -103,6 +106,38 @@ export default function IssuesPage() {
     const days = stayDays(i)
     return days !== null && days > DANGER_DAYS
   })
+
+  const projectContext = useProjectContext(projectId)
+
+  /** 分享导出：干净 HTML 问题台账（含停留天数，与页面口径一致） */
+  const buildShareReport = (): ReportConfig =>
+    tableReport({
+      title: `${projectContext.project?.name ?? '项目'} · 问题台账`,
+      subtitle: '停留天数 = 今天 − 创建日（已关闭 = 关闭/验证日 − 创建日）',
+      meta: `共 ${items.length} 项问题（未关闭 ${openItems.length} · 逾期 ${overdueItems.length} · 久拖 ${stalledItems.length}） · 生成日期 ${new Date().toISOString().slice(0, 10)}`,
+      columns: [
+        { key: 'title', header: '标题', align: 'left' },
+        { key: 'severity', header: '严重度', align: 'center', width: 80 },
+        { key: 'owner', header: '负责人', align: 'center', width: 90 },
+        { key: 'due', header: '要求解决日期', align: 'center', width: 120 },
+        { key: 'stay', header: '停留天数', align: 'center', width: 110 },
+        { key: 'status', header: '状态', align: 'center', width: 90 },
+        { key: 'closure', header: '关闭结论', align: 'left', width: 180 },
+      ],
+      rows: items.map(r => {
+        const days = stayDays(r)
+        return {
+          title: r.title,
+          severity: r.severity ?? '—',
+          owner: r.owner ?? '—',
+          due: r.due_date ?? '—',
+          stay: days === null ? '—' : `${days} 天${r.status === CLOSED_STATUS ? '（已闭环）' : ''}`,
+          status: r.status,
+          closure: r.closure_result ?? '—',
+        }
+      }),
+      emptyText: '暂无问题',
+    })
 
   const openCreate = () => {
     setEditing(null)
@@ -310,7 +345,7 @@ export default function IssuesPage() {
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               新建问题
             </Button>
-            <ExportMenu resource="issues" projectId={projectId} />
+            <ExportMenu resource="issues" projectId={projectId} shareReport={buildShareReport} />
           </Space>
         }
       >

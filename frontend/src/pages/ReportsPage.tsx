@@ -1,4 +1,4 @@
-import { FileWordOutlined, PrinterOutlined, ReloadOutlined } from '@ant-design/icons'
+import { FileWordOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
   App,
   Button,
@@ -22,88 +22,27 @@ import { useParams } from 'react-router-dom'
 import ExportMenu from '../components/ExportMenu'
 import { api } from '../api/client'
 import { weeklyText } from '../api/stage5'
+import { useProjectContext } from '../hooks/useProjectContext'
+import {
+  buildPeriodicReport,
+  type PeriodicReportInput,
+  type ReportDeliverable,
+  type ReportIssue,
+  type ReportMilestone,
+  type ReportRisk,
+  type ReportTask,
+  type ReportTodoItem,
+} from '../utils/reportBuilders'
 
 const { Text, Title, Paragraph } = Typography
 
 type PeriodType = 'daily' | 'weekly' | 'monthly'
 
-// ---- 报告接口数据结构（对接后端 GET /api/projects/{id}/reports?period_type=...） ----
-interface ReportTask {
-  id: string
-  name: string
-  owner: string | null
-  status: string | null
-  progress: number
-  plan_start: string | null
-  plan_end: string | null
-}
-interface ReportMilestone {
-  id: string
-  name: string
-  plan_date: string | null
-  actual_date: string | null
-  status: string | null
-}
-interface ReportRisk {
-  id: string
-  description: string
-  level: string | null
-  owner: string | null
-  status: string
-}
-interface ReportIssue {
-  id: string
-  title: string
-  severity: string | null
-  owner: string | null
-  status: string
-}
-interface ReportDeliverable {
-  id: string
-  name: string
-  owner: string | null
-  submit_status: string
-  review_status: string
-}
-interface ReportTodoItem {
-  id: string
-  name: string
-  date: string | null
-}
-interface ReportOverviewTodos {
-  milestones: ReportTodoItem[]
-  tasks: ReportTodoItem[]
-  deliverables: ReportTodoItem[]
-}
-interface ReportKpi {
-  total: number
-  done: number
-  doing: number
-  overdue: number
-  progress_pct: number
-  risk_open: number
-  high_risk: number
-  issue_open: number
-}
 /**
  * 后端 /api/projects/{id}/reports 返回结构（build_report 为平铺结构，无 meta/sections 包裹）。
- * 字段与 backend/app/services/report_service.py:build_report 一一对应。
+ * 字段与 backend/app/services/report_service.py:build_report 一一对应；类型统一在 reportBuilders 维护。
  */
-interface ReportResponse {
-  project_id: string
-  period_type: PeriodType
-  start: string
-  end: string
-  generated_at: string
-  text: string
-  tasks: ReportTask[]
-  milestones: ReportMilestone[]
-  open_risks: ReportRisk[]
-  open_issues: ReportIssue[]
-  deliverables: ReportDeliverable[]
-  overview_todos: ReportOverviewTodos
-  kpi: ReportKpi
-}
+type ReportResponse = PeriodicReportInput
 
 /** 自然周（周一~周日）：以周一为起点，修正 dayjs 默认周日起点 */
 function startOfWeekMonday(d: Dayjs): Dayjs {
@@ -168,7 +107,7 @@ const milestoneColumns: TableProps<ReportMilestone>['columns'] = [
 ]
 
 const riskColumns: TableProps<ReportRisk>['columns'] = [
-  { title: '描述', dataIndex: 'description' },
+  { title: '风险', dataIndex: 'name' },
   {
     title: '等级',
     dataIndex: 'level',
@@ -183,7 +122,7 @@ const riskColumns: TableProps<ReportRisk>['columns'] = [
 ]
 
 const issueColumns: TableProps<ReportIssue>['columns'] = [
-  { title: '标题', dataIndex: 'title' },
+  { title: '问题', dataIndex: 'name' },
   {
     title: '严重度',
     dataIndex: 'severity',
@@ -212,6 +151,8 @@ export default function ReportsPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const pid = projectId ?? ''
   const { message } = App.useApp()
+  const projectContext = useProjectContext(pid)
+  const projectName = projectContext.project?.name ?? '项目'
 
   const [periodType, setPeriodType] = useState<PeriodType>('weekly')
   const [pickerValue, setPickerValue] = useState<Dayjs>(defaultPickerValue('weekly'))
@@ -327,15 +268,16 @@ export default function ReportsPage() {
             <Button icon={<FileWordOutlined />} onClick={() => window.open(exportWordUrl)}>
               导出 Word
             </Button>
-            <Button icon={<PrinterOutlined />} onClick={() => window.print()}>
-              导出 PDF（打印）
-            </Button>
+            <ExportMenu
+              buttonText="导出 PDF / 报告"
+              shareReport={report ? () => buildPeriodicReport(projectName, report) : undefined}
+            />
           </Space>
         </Space>
       </Card>
 
-      {/* 预览区：稳定 id，供 print.css 控制打印范围 */}
-      <div id="report-print-area">
+      {/* 预览区：分享导出已改为「新窗口干净文档打印」，不再依赖页内打印容器 */}
+      <div>
         <Spin spinning={loading}>
           {!report ? (
             <Card>

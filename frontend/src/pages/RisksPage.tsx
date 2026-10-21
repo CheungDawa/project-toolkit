@@ -31,6 +31,9 @@ import {
   updateRisk,
 } from '../api/stage3'
 import ExportMenu from '../components/ExportMenu'
+import { useProjectContext } from '../hooks/useProjectContext'
+import type { ReportConfig } from '../utils/reportHtml'
+import { tableReport } from '../utils/reportBuilders'
 const LEVEL_COLORS: Record<string, string> = { 低: 'green', 中: 'orange', 高: 'red' }
 
 /** 已终结状态口径与后端驾驶舱一致（backend/app/api/overview.py:25 _RISK_CLOSED） */
@@ -200,6 +203,33 @@ export default function RisksPage() {
   const activeRisks = risks.filter(r => !CLOSED_STATUSES.includes(r.status))
   const highCount = activeRisks.filter(r => r.level === '高').length
   const occurredCount = activeRisks.filter(r => r.status === '已发生').length
+
+  const projectContext = useProjectContext(projectId)
+
+  /** 分享导出：干净 HTML 风险台账（含 P×I 评分，与页面口径一致） */
+  const buildShareReport = (): ReportConfig =>
+    tableReport({
+      title: `${projectContext.project?.name ?? '项目'} · 风险台账`,
+      subtitle: '评分 = 概率 × 影响；等级：≤4 低 / ≤9 中 / 其余 高',
+      meta: `共 ${risks.length} 项风险（活跃 ${activeRisks.length} · 高等级 ${highCount}） · 生成日期 ${new Date().toISOString().slice(0, 10)}`,
+      columns: [
+        { key: 'category', header: '类别', align: 'left', width: 100 },
+        { key: 'description', header: '描述', align: 'left' },
+        { key: 'score', header: '评分', align: 'center', width: 140 },
+        { key: 'owner', header: '责任人', align: 'center', width: 90 },
+        { key: 'status', header: '状态', align: 'center', width: 100 },
+        { key: 'residual', header: '剩余风险', align: 'center', width: 90 },
+      ],
+      rows: risks.map(r => ({
+        category: r.category ?? '—',
+        description: r.description,
+        score: `${r.probability}×${r.impact} = ${r.score}（${r.level ?? levelOf(r.probability, r.impact)}）`,
+        owner: r.owner ?? '—',
+        status: r.status,
+        residual: r.residual_level ?? '—',
+      })),
+      emptyText: '暂无风险',
+    })
 
   const openCreate = () => {
     setEditing(null)
@@ -463,7 +493,7 @@ export default function RisksPage() {
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               新建风险
             </Button>
-            <ExportMenu resource="risks" projectId={projectId} />
+            <ExportMenu resource="risks" projectId={projectId} shareReport={buildShareReport} />
           </Space>
         }
       >

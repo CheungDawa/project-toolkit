@@ -60,6 +60,9 @@ import type { Project } from '../api/projects'
 import { listProjects } from '../api/projects'
 import TaskFormModal from '../components/TaskFormModal'
 import ExportMenu from '../components/ExportMenu'
+import { useProjectContext } from '../hooks/useProjectContext'
+import type { ReportConfig } from '../utils/reportHtml'
+import { tableReport } from '../utils/reportBuilders'
 import { buildChildrenMap, buildDescendantRanges } from '../utils/wbsTree'
 
 /** 导入模板下载地址（后端端点 GET /api/projects/{id}/tasks/import-template） */
@@ -281,6 +284,37 @@ export default function WbsPage() {
   }, [tasks, keyword, statusFilter])
 
   const tree = useMemo(() => buildTree(filtered), [filtered])
+
+  const projectContext = useProjectContext(projectId)
+
+  /** 分享导出：按当前筛选结果生成干净 HTML 报告（WBS 任务清单） */
+  const buildShareReport = (): ReportConfig =>
+    tableReport({
+      title: `${projectContext.project?.name ?? '项目'} · WBS 任务清单`,
+      subtitle: '与页面当前筛选一致',
+      meta: `共 ${filtered.length} 项任务 · 生成日期 ${new Date().toISOString().slice(0, 10)}`,
+      columns: [
+        { key: 'wbs', header: 'WBS', align: 'left', width: 90 },
+        { key: 'name', header: '任务名称', align: 'left' },
+        { key: 'status', header: '状态', align: 'center', width: 80 },
+        { key: 'owner', header: '负责人', align: 'center', width: 90 },
+        { key: 'range', header: '计划起止', align: 'center', width: 180 },
+        { key: 'duration', header: '工期(天)', align: 'center', width: 80 },
+        { key: 'work', header: '工时', align: 'center', width: 70 },
+        { key: 'progress', header: '进度', align: 'center', width: 70 },
+      ],
+      rows: filtered.map(t => ({
+        wbs: t.wbs_code,
+        name: t.name,
+        status: t.status,
+        owner: t.owner ?? '—',
+        range: t.plan_start && t.plan_end ? `${t.plan_start} ~ ${t.plan_end}` : '—',
+        duration: t.duration_days ?? '—',
+        work: t.work_hours ?? '—',
+        progress: `${Math.round((t.effective_progress ?? t.progress) * 10) / 10}%`,
+      })),
+      emptyText: '暂无任务',
+    })
 
   /** 父任务 id -> 由子任务汇总出的「建议区间」（只统计有子任务的任务） */
   const summaryRange = useMemo(() => {
@@ -856,7 +890,7 @@ export default function WbsPage() {
             >
               导出
             </Button>
-            <ExportMenu resource="tasks" projectId={projectId} />
+            <ExportMenu resource="tasks" projectId={projectId} shareReport={buildShareReport} />
             <Button
               icon={<DownloadOutlined />}
               onClick={() => window.open(importTemplateUrl(projectId!))}
