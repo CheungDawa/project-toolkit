@@ -1,4 +1,5 @@
 import {
+  DownloadOutlined,
   ExportOutlined,
   FileExcelOutlined,
   FileImageOutlined,
@@ -10,6 +11,12 @@ import type { MenuProps } from 'antd'
 import { useState } from 'react'
 
 import { downloadDataUrl, downloadUrl } from '../utils/download'
+import {
+  buildReportHtml,
+  downloadHtmlReport,
+  openHtmlReport,
+  type ReportConfig,
+} from '../utils/reportHtml'
 
 /** 数据导出支持的资源类型（与后端 GET /api/exports/data?resource= 对齐） */
 export type ExportResource =
@@ -23,12 +30,12 @@ export interface ExportMenuProps {
   resource?: ExportResource
   /** 项目维度资源需要传项目 id；overview（跨项目）不传 */
   projectId?: string
+  /** 分享导出：生成干净自包含 HTML 报告（PDF 打印 / 下载 HTML），只含本模块相关数据 */
+  shareReport?: () => ReportConfig
   /** 是否支持「分享导出 → PNG」（当前仅甘特图为 true） */
   supportsPng?: boolean
   /** 返回 PNG dataURL 的生成函数；supportsPng 为 true 时必须提供 */
   onExportPng?: () => Promise<string>
-  /** 分享导出 → PDF 时打印的容器 id（默认 report-print-area） */
-  printTargetId?: string
   /** 触发按钮文案（默认「导出」） */
   buttonText?: string
 }
@@ -40,14 +47,7 @@ const FORMAT_LABEL: Record<DataFormat, string> = {
   json: 'JSON',
 }
 
-/** 生成文件名时间戳：YYYYMMDD-HHmm */
-function fileStamp(): string {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
-}
-
-/** 构造数据导出下载地址（与后端契约一致） */
+/** 生成数据导出下载地址（与后端契约一致） */
 function buildExportUrl(
   resource: ExportResource,
   projectId: string | undefined,
@@ -58,20 +58,25 @@ function buildExportUrl(
   return `/api/exports/data?${params.toString()}`
 }
 
+/** 文件名净化：去掉不适合做文件名的字符 */
+function safeName(name: string): string {
+  return name.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 80) || '报告'
+}
+
 /**
- * 通用导出菜单：数据导出（CSV / Excel / JSON）+ 分享导出（PDF / PNG）。
- *
- * - 数据导出：调用统一后端接口 GET /api/exports/data（后端按 resource 返回带 Content-Disposition 的文件流）
- * - PDF：仅打印 printTargetId 容器（通过给 body 加 class 让 print.css 只显示该容器，打印后移除）；
- *        若页面不存在该容器，退回浏览器整页打印，避免空白页
- * - PNG：调用外部 onExportPng 生成 dataURL 后下载（当前仅甘特图使用）
+ * 通用导出菜单：
+ * - 数据导出（CSV / Excel / JSON）：走统一后端接口 GET /api/exports/data，面向再加工；
+ * - 分享导出：
+ *   · PDF —— 生成干净自包含 HTML 报告并在新窗口打印（只打印报告本身，不含应用外壳）；
+ *   · HTML 报告 —— 下载单文件 .html，双击即可查看 / 传阅；
+ *   · PNG —— 调用外部 onExportPng 生成 dataURL 后下载（当前仅甘特图使用）。
  */
 export default function ExportMenu({
   resource,
   projectId,
+  shareReport,
   supportsPng = false,
   onExportPng,
-  printTargetId = 'report-print-area',
   buttonText = '导出',
 }: ExportMenuProps) {
   const { message } = App.useApp()
@@ -94,21 +99,27 @@ export default function ExportMenu({
     }
   }
 
-  /** 分享导出 → PDF：仅打印目标容器（不存在则整页打印） */
-  const handlePrint = () => {
-    const target = document.getElementById(printTargetId)
-    if (!target) {
-      window.print()
-      return
+  /** 分享导出 → PDF：干净报告新窗口打印（弹窗被拦截则退化为下载 HTML） */
+  const handleSharePdf = () => {
+    if (!shareReport) return
+    try {
+      const html = buildReportHtml(shareReport())
+      openHtmlReport(html, { print: true })
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '生成 PDF 失败')
     }
-    // print.css 在 body.pt-printing 时隐藏除 [id$="-print-area"] 外的所有内容
-    document.body.classList.add('pt-printing')
-    const cleanup = () => {
-      document.body.classList.remove('pt-printing')
-      window.removeEventListener('afterprint', cleanup)
+  }
+
+  /** 分享导出 → 下载单文件 HTML 报告 */
+  const handleShareHtml = () => {
+    if (!shareReport) return
+    try {
+      const cfg = shareReport()
+      downloadHtmlReport(safeName(cfg.title), buildReportHtml(cfg))
+      message.success('已下载 HTML 报告，可双击打开或传阅')
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '生成报告失败')
     }
-    window.addEventListener('afterprint', cleanup)
-    window.print()
   }
 
   /** 分享导出 → PNG：外部生成 dataURL 后下载 */
@@ -117,7 +128,7 @@ export default function ExportMenu({
     setPngExporting(true)
     try {
       const dataUrl = await onExportPng()
-      downloadDataUrl(dataUrl, `导出图_${fileStamp()}.png`)
+      downloadDataUrl(dataUrl, `导出图_${Date.now()}.png`)
       message.success('已导出 PNG')
     } catch (err) {
       message.error(err instanceof Error ? err.message : '导出图片失败')
@@ -139,10 +150,22 @@ export default function ExportMenu({
       })),
     })
   }
-  const shareChildren: MenuProps['items'] = [
-    { key: 'pdf', icon: <FilePdfOutlined />, label: 'PDF', onClick: handlePrint },
-  ]
-  if (supportsPng) {
+  const shareChildren: MenuProps['items'] = []
+  if (shareReport) {
+    shareChildren.push({
+      key: 'pdf',
+      icon: <FilePdfOutlined />,
+      label: 'PDF（打印）',
+      onClick: handleSharePdf,
+    })
+    shareChildren.push({
+      key: 'html',
+      icon: <DownloadOutlined />,
+      label: 'HTML 报告',
+      onClick: handleShareHtml,
+    })
+  }
+  if (supportsPng && onExportPng) {
     shareChildren.push({
       key: 'png',
       icon: <FileImageOutlined />,
@@ -150,7 +173,11 @@ export default function ExportMenu({
       onClick: () => void handleExportPng(),
     })
   }
-  items.push({ type: 'group', label: '分享导出', children: shareChildren })
+  if (shareChildren.length) {
+    items.push({ type: 'group', label: '分享导出', children: shareChildren })
+  }
+
+  if (!items.length) return null
 
   return (
     <Dropdown menu={{ items }} trigger={['click']}>
