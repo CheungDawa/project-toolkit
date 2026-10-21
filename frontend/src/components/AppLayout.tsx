@@ -8,6 +8,7 @@ import {
   FileDoneOutlined,
   FileTextOutlined,
   FlagOutlined,
+  HistoryOutlined,
   FundProjectionScreenOutlined,
   LinkOutlined,
   MenuFoldOutlined,
@@ -43,6 +44,7 @@ export const PROJECT_MODULES = [
   { key: 'deliverables', label: '交付资料', icon: <FileDoneOutlined />, path: 'deliverables' },
   { key: 'progress', label: '燃尽图/快照', icon: <FieldTimeOutlined />, path: 'progress' },
   { key: 'reports', label: '报告中心', icon: <FileTextOutlined />, path: 'reports' },
+  { key: 'retrospectives', label: '复盘', icon: <HistoryOutlined />, path: 'retrospectives' },
   { key: 'audit', label: '审计日志', icon: <AuditOutlined />, path: 'audit' },
 ]
 

@@ -58,6 +58,7 @@ const Guarded = {
   milestones: guard(() => import('./pages/MilestonesPage')),
   progress: guard(() => import('./pages/ProgressPage')),
   reports: guard(() => import('./pages/ReportsPage')),
+  retro: guard(() => import('./pages/RetroPage')),
   risks: guard(() => import('./pages/RisksPage')),
   stakeholders: guard(() => import('./pages/StakeholdersPage')),
   wbs: guard(() => import('./pages/WbsPage')),
@@ -94,6 +95,7 @@ export default function App() {
             <Route path="/projects/:id/progress" element={<Guarded.progress />} />
             <Route path="/projects/:id/deliverables" element={<Guarded.deliverables />} />
             <Route path="/projects/:id/reports" element={<Guarded.reports />} />
+            <Route path="/projects/:id/retrospectives" element={<Guarded.retro />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
