@@ -5,7 +5,7 @@ import io
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path, Query
 from fastapi.responses import StreamingResponse
 from docx import Document
 from sqlalchemy import select
@@ -19,6 +19,7 @@ from app.models.stage5 import Deliverable
 from app.models.task import Milestone, Task
 from app.schemas.stage5 import DeliverableRead
 from app.services import progress as progress_service
+from app.services import report_service
 from app.services import wbs as wbs_service
 
 router = APIRouter(prefix="/api", tags=["reports"])
@@ -205,7 +206,11 @@ def weekly_text(project_id: UUID, db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/projects/{project_id}/reports/{report_type}/export")
-def export_report(project_id: UUID, report_type: str, db: Session = Depends(get_db)) -> StreamingResponse:
+def export_report(
+    project_id: UUID,
+    report_type: str = Path(..., pattern="^(weekly|final)$"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
     """Word 导出：weekly=周报 / final=项目收尾报告（python-docx 模板字段映射）。"""
     if report_type not in ("weekly", "final"):
         from app.core.errors import AppError
@@ -371,6 +376,172 @@ def export_stakeholder_report(project_id: UUID, db: Session = Depends(get_db)) -
     doc.save(buf)
     buf.seek(0)
     filename = f"stakeholders_report_{project.code}_{now.date().isoformat()}.docx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------- 统一报告引擎（结构化 JSON + Word 导出，复用统一进度口径） ----------
+
+
+@router.get("/projects/{project_id}/reports")
+def get_report(
+    project_id: UUID,
+    period_type: str = Query("daily", description="daily|weekly|monthly"),
+    start: date | None = Query(None, description="周期起点（ISO）；与 end 同时给出则优先"),
+    end: date | None = Query(None, description="周期终点（ISO）；与 start 同时给出则优先"),
+    template: str | None = Query(None, description="（预留）报告模板，本轮未使用"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """结构化周期报告：所有数字走统一进度口径（report_service.get_project_progress）。
+
+    返回 sections：tasks / milestones / open_risks / open_issues / deliverables /
+    overview_todos / kpi / meta，前端据此渲染。保留 text 占位供前端编辑后随导出合并。
+    """
+    return report_service.build_report(db, project_id, period_type, start, end)
+
+
+def _render_report_doc(report: dict) -> Document:
+    """把 build_report 返回的结构化报告渲染为 Word 文档（统一渲染入口）。
+
+    各 section 与 JSON 一一对应；KPI 直接来自统一进度口径，保证报告内部自洽。
+    """
+    doc = Document()
+    period = report.get("period_type", "daily")
+    doc.add_heading(f"项目周期报告（{period}）", level=1)
+    doc.add_paragraph(
+        f"项目：{report.get('project_id', '-')}    "
+        f"周期：{report.get('start', '-')} ~ {report.get('end', '-')}    "
+        f"生成时间：{report.get('generated_at', '-')}"
+    )
+
+    text = report.get("text") or ""
+    if text:
+        doc.add_paragraph(text)
+
+    # 一、任务明细
+    doc.add_heading("一、任务明细", level=2)
+    _render_table(
+        doc,
+        ["WBS", "任务", "状态", "负责人", "计划起止", "进度"],
+        [
+            [
+                t["wbs_code"], t["name"], t["status"], t.get("owner") or "-",
+                f"{t.get('plan_start') or '-'} ~ {t.get('plan_end') or '-'}",
+                f"{round(float(t.get('progress') or 0), 1)}%",
+            ]
+            for t in report.get("tasks", [])
+        ],
+    )
+
+    # 二、里程碑
+    doc.add_heading("二、里程碑", level=2)
+    _render_table(
+        doc,
+        ["里程碑", "计划日期", "状态"],
+        [
+            [m["name"], m.get("plan_date") or "-", m.get("status") or "-"]
+            for m in report.get("milestones", [])
+        ],
+    )
+
+    # 三、未关闭风险
+    doc.add_heading("三、未关闭风险", level=2)
+    _render_table(
+        doc,
+        ["风险", "等级", "负责人"],
+        [
+            [r["name"], r.get("level") or "-", r.get("owner") or "-"]
+            for r in report.get("open_risks", [])
+        ],
+    )
+
+    # 四、未关闭问题
+    doc.add_heading("四、未关闭问题", level=2)
+    _render_table(
+        doc,
+        ["问题", "状态", "负责人"],
+        [
+            [i["name"], i.get("status") or "-", i.get("owner") or "-"]
+            for i in report.get("open_issues", [])
+        ],
+    )
+
+    # 五、交付物
+    doc.add_heading("五、交付物", level=2)
+    _render_table(
+        doc,
+        ["交付物", "提交状态", "审核状态"],
+        [
+            [d["name"], d.get("submit_status") or "-", d.get("review_status") or "-"]
+            for d in report.get("deliverables", [])
+        ],
+    )
+
+    # 六、待办概览（复用 /api/overview/todos）
+    doc.add_heading("六、待办概览", level=2)
+    todos = report.get("overview_todos", {})
+    doc.add_paragraph(
+        f"统计日：{todos.get('today', '-')}；"
+        f"待办里程碑 {len(todos.get('milestones', []))} 项、"
+        f"逾期任务 {len(todos.get('tasks', []))} 项、"
+        f"待审核交付物 {len(todos.get('deliverables', []))} 项"
+    )
+
+    # 七、统一进度口径 KPI
+    doc.add_heading("七、进度与风险概览（统一口径）", level=2)
+    kpi = report.get("kpi", {})
+    doc.add_paragraph(
+        f"整体进度 {kpi.get('progress_pct', 0)}%；"
+        f"任务 {kpi.get('done', 0)}/{kpi.get('total', 0)} 已完成，"
+        f"进行中 {kpi.get('doing', 0)}，逾期 {kpi.get('overdue', 0)}；"
+        f"开放风险 {kpi.get('risk_open', 0)}（高 {kpi.get('high_risk', 0)}）、"
+        f"未关闭问题 {kpi.get('issue_open', 0)}"
+    )
+    return doc
+
+
+def _render_table(doc: Document, headers: list[str], rows: list[list[str]]) -> None:
+    """渲染表格；空数据时给一行占位，避免空表歧义。"""
+    table = doc.add_table(rows=1, cols=len(headers))
+    table.style = "Light Grid Accent 1"
+    for index, text in enumerate(headers):
+        table.rows[0].cells[index].text = text
+    if not rows:
+        empty = table.add_row().cells
+        for index in range(len(headers)):
+            empty[index].text = "（无数据）"
+        return
+    for row in rows:
+        cells = table.add_row().cells
+        for index, value in enumerate(row):
+            cells[index].text = str(value)
+
+
+@router.get("/projects/{project_id}/reports/export")
+def export_report_doc(
+    project_id: UUID,
+    period_type: str = Query("daily", description="daily|weekly|monthly"),
+    fmt: str = Query("docx", description="docx（本轮仅支持 docx）"),
+    start: date | None = Query(None, description="周期起点（ISO）"),
+    end: date | None = Query(None, description="周期终点（ISO）"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """周期报告 Word 导出：先 build_report 取统一口径数据，再 _render_report_doc 渲染。
+
+    旧的 /reports/weekly-text 与 /reports/{type}/export(weekly|final) 保留不动（向后兼容），
+    内部走各自既有渲染；本接口提供统一的周期报告导出。
+    """
+    if fmt != "docx":
+        raise AppError(422, "invalid_format", "当前报告导出仅支持 docx")
+    report = report_service.build_report(db, project_id, period_type, start, end)
+    document = _render_report_doc(report)
+    buf = io.BytesIO()
+    document.save(buf)
+    buf.seek(0)
+    filename = f"report_{period_type}_{project_id}_{today_local().isoformat()}.docx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
