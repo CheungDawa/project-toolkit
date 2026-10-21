@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { api } from '../api/client'
+import ExportMenu from '../components/ExportMenu'
 
 interface OverviewProject {
   id: string
@@ -1127,9 +1128,13 @@ export default function DashboardPage() {
             <span style={{ fontSize: 15, fontWeight: 700, color: '#171b2e' }}>项目进度一览</span>
             <span style={{ fontSize: 12, color: '#8a919e' }}>支持按异常 / 进度排序</span>
           </div>
-          <span style={{ fontSize: 12, color: '#8a919e' }}>
-            {data?.totals.projects ?? 0} 个项目
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: '#8a919e' }}>
+              {data?.totals.projects ?? 0} 个项目
+            </span>
+            {/* 跨项目总览导出（overview 资源不传 projectId） */}
+            <ExportMenu resource="overview" />
+          </div>
         </div>
         <Table<OverviewProject>
           rowKey="id"

@@ -20,6 +20,7 @@ import { useParams } from 'react-router-dom'
 
 import type { Milestone } from '../api/stage2'
 import { createMilestone, deleteMilestone, listMilestones, updateMilestone } from '../api/stage2'
+import ExportMenu from '../components/ExportMenu'
 
 /** 本地时区今天的 YYYY-MM-DD（避免 toISOString 的 UTC 偏移问题） */
 function localToday(): string {
@@ -217,9 +218,12 @@ export default function MilestonesPage() {
       <Card
         title="里程碑"
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            新建里程碑
-          </Button>
+          <>
+            <ExportMenu resource="milestones" projectId={projectId} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              新建里程碑
+            </Button>
+          </>
         }
       >
         <Typography.Paragraph style={{ marginBottom: 12 }} type="secondary">

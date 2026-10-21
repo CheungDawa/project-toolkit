@@ -30,6 +30,7 @@ import {
   listRisks,
   updateRisk,
 } from '../api/stage3'
+import ExportMenu from '../components/ExportMenu'
 const LEVEL_COLORS: Record<string, string> = { 低: 'green', 中: 'orange', 高: 'red' }
 
 /** 已终结状态口径与后端驾驶舱一致（backend/app/api/overview.py:25 _RISK_CLOSED） */
@@ -462,6 +463,7 @@ export default function RisksPage() {
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               新建风险
             </Button>
+            <ExportMenu resource="risks" projectId={projectId} />
           </Space>
         }
       >

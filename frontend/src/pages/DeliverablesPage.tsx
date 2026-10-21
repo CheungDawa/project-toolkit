@@ -41,6 +41,7 @@ import {
   updateDeliverable,
   uploadAttachment,
 } from '../api/stage5'
+import ExportMenu from '../components/ExportMenu'
 
 const CATEGORIES = ['设备到货', '安装调试', '测试', '培训', '试运行', '验收', '运维移交']
 const SUBMIT_STATUS = ['未提交', '已提交', '已归档']
@@ -409,6 +410,7 @@ export default function DeliverablesPage() {
             >
               导出
             </Button>
+            <ExportMenu resource="deliverables" projectId={projectId} />
             <Upload accept=".xlsx" showUploadList={false} beforeUpload={file => handleImport(file)}>
               <Button icon={<UploadOutlined />}>导入</Button>
             </Upload>

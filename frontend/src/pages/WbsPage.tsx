@@ -59,6 +59,7 @@ import {
 import type { Project } from '../api/projects'
 import { listProjects } from '../api/projects'
 import TaskFormModal from '../components/TaskFormModal'
+import ExportMenu from '../components/ExportMenu'
 import { buildChildrenMap, buildDescendantRanges } from '../utils/wbsTree'
 
 /** 导入模板下载地址（后端端点 GET /api/projects/{id}/tasks/import-template） */
@@ -855,6 +856,7 @@ export default function WbsPage() {
             >
               导出
             </Button>
+            <ExportMenu resource="tasks" projectId={projectId} />
             <Button
               icon={<DownloadOutlined />}
               onClick={() => window.open(importTemplateUrl(projectId!))}

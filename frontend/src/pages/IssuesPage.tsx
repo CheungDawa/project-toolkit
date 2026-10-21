@@ -22,6 +22,7 @@ import { useParams } from 'react-router-dom'
 
 import type { IssueItem } from '../api/stage3'
 import { closeIssue, createIssue, deleteIssue, listIssues, updateIssue } from '../api/stage3'
+import ExportMenu from '../components/ExportMenu'
 
 const SEVERITY_TAG: Record<string, string> = { 高: 'red', 中: 'orange', 低: 'green' }
 const CLOSED_STATUS = '已关闭'
@@ -309,6 +310,7 @@ export default function IssuesPage() {
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               新建问题
             </Button>
+            <ExportMenu resource="issues" projectId={projectId} />
           </Space>
         }
       >

@@ -18,6 +18,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 
 import type { GanttItemInput, GanttViewHandle, GanttViewMode } from '../components/GanttView'
 import GanttView from '../components/GanttView'
+import ExportMenu from '../components/ExportMenu'
 import { getProject } from '../api/projects'
 import type { DependencyItem, Milestone, TaskItem } from '../api/stage2'
 import { getCalendar, listMilestones, listTasks, updateTask } from '../api/stage2'
@@ -58,19 +59,6 @@ function formatStamp(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
     d.getMinutes(),
   )}`
-}
-
-/** 文件名里的时间戳：YYYYMMDD-HHmm */
-function formatFileStamp(d: Date): string {
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(
-    d.getMinutes(),
-  )}`
-}
-
-/** 文件名非法字符兜底（Windows 不允许 \ / : * ? " < > |） */
-function sanitizeFileName(name: string): string {
-  const cleaned = name.replace(/[\\/:*?"<>|]/g, '_').trim()
-  return cleaned.length > 0 ? cleaned : '项目'
 }
 
 /** html-to-image 的 filter：返回 false 的节点（及其子树）不会出现在导出图中 */
@@ -301,7 +289,6 @@ export default function GanttPage() {
   const [mode, setMode] = useState<GanttViewMode>('Day')
   const [saving, setSaving] = useState(false)
   const [showSummary, setShowSummary] = useState(true)
-  const [exporting, setExporting] = useState(false)
   const [generatedAt, setGeneratedAt] = useState(() => formatStamp(new Date()))
   /** 导出区间（默认 null = 导出整条时间轴）；选中后只截取该区间 */
   const [exportRange, setExportRange] = useState<[Dayjs, Dayjs] | null>(null)
@@ -509,15 +496,14 @@ export default function GanttPage() {
     message.info('提示：拖动条身改日期，拖动进度条改进度，均自动保存')
   }
 
-  const handleExportPng = async () => {
+  const handleExportPng = async (): Promise<string> => {
     const node = exportRef.current
     if (!node) {
       message.error('甘特图尚未渲染完成，请稍后再导出')
-      return
+      throw new Error('甘特图尚未渲染完成')
     }
-    if (exportingRef.current) return
+    if (exportingRef.current) throw new Error('正在导出中')
     exportingRef.current = true
-    setExporting(true)
 
     /**
      * 截图完整性关键：甘特图本体有三层横向滚动容器
@@ -699,25 +685,14 @@ export default function GanttPage() {
         filter: isExportableNode,
       })
 
-      const rangeLabel = exportRange
-        ? `_${exportRange[0].format('YYYYMMDD')}-${exportRange[1].format('YYYYMMDD')}`
-        : ''
-      const link = document.createElement('a')
-      link.download = `甘特图_${sanitizeFileName(projectName)}${rangeLabel}_${formatFileStamp(new Date())}.png`
-      link.href = dataUrl
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      message.success('甘特图已导出 PNG')
-    } catch (err) {
-      message.error(`导出图片失败：${err instanceof Error ? err.message : String(err)}`)
+      // 仅返回 dataURL：下载动作交给 ExportMenu（保持下方测量/平移/裁剪等「导出正确性」逻辑不变）
+      return dataUrl
     } finally {
       for (const item of saved) item.el.style.cssText = item.cssText
       // cssText 已整体还原，但 pointer-events 可能不在快照里（本轮才加上去的），单独再兜一次
       if (ganttView) ganttView.style.pointerEvents = previousPointerEvents
       restoreSvgPaint?.()
       exportingRef.current = false
-      setExporting(false)
     }
   }
 
@@ -778,9 +753,12 @@ export default function GanttPage() {
             <Button onClick={() => void fetchData()} loading={loading}>
               刷新
             </Button>
-            <Button type="primary" loading={exporting} onClick={() => void handleExportPng()}>
-              导出图片
-            </Button>
+            <ExportMenu
+              supportsPng
+              onExportPng={handleExportPng}
+              printTargetId="gantt-print-area"
+              buttonText="导出"
+            />
             <Button onClick={() => navigate(`/projects/${projectId}/wbs`)}>去 WBS 编辑</Button>
           </Space>
         }
@@ -802,34 +780,37 @@ export default function GanttPage() {
           </Typography.Text>
         ) : null}
 
-        {/* 导出范围：标题区 + 甘特图本体 + 图例，整块作为 PNG 导出 */}
-        <div ref={exportRef} className="pt-gantt-export">
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 18, fontWeight: 600, color: '#171717' }}>
-              {projectName ? `${projectName} · 项目甘特图` : '项目甘特图'}
+        {/* 导出范围：标题区 + 甘特图本体 + 图例，整块作为 PNG 导出；
+            gantt-print-area 为「分享导出 → PDF」的打印容器（见 styles/print.css） */}
+        <div id="gantt-print-area">
+          <div ref={exportRef} className="pt-gantt-export">
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 18, fontWeight: 600, color: '#171717' }}>
+                {projectName ? `${projectName} · 项目甘特图` : '项目甘特图'}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 12, color: '#7c7c7c' }}>
+                {exportRange
+                  ? `导出范围：${exportRange[0].format('YYYY-MM-DD')} ~ ${exportRange[1].format('YYYY-MM-DD')} ｜ `
+                  : '导出范围：全部时间轴 ｜ '}
+                视图：{VIEW_MODE_LABEL[mode]}视图 ｜ 计划区间：{rangeText} ｜ 已排期任务 {leafCount}{' '}
+                项{showSummary ? '（含汇总条）' : ''} ｜ 生成时间：{generatedAt}
+              </div>
             </div>
-            <div style={{ marginTop: 4, fontSize: 12, color: '#7c7c7c' }}>
-              {exportRange
-                ? `导出范围：${exportRange[0].format('YYYY-MM-DD')} ~ ${exportRange[1].format('YYYY-MM-DD')} ｜ `
-                : '导出范围：全部时间轴 ｜ '}
-              视图：{VIEW_MODE_LABEL[mode]}视图 ｜ 计划区间：{rangeText} ｜ 已排期任务 {leafCount}{' '}
-              项{showSummary ? '（含汇总条）' : ''} ｜ 生成时间：{generatedAt}
-            </div>
+
+            <GanttView
+              ref={ganttRef}
+              items={ganttItems}
+              viewMode={mode}
+              holidayDates={holidayDates}
+              weekendDays={weekendDays}
+              onDateChange={(taskId, start, end) => void handleDateChange(taskId, start, end)}
+              onProgressChange={(taskId, progress) => void handleProgressChange(taskId, progress)}
+              onTaskClick={handleTaskClick}
+              onViewModeChange={setMode}
+            />
+
+            <GanttLegend />
           </div>
-
-          <GanttView
-            ref={ganttRef}
-            items={ganttItems}
-            viewMode={mode}
-            holidayDates={holidayDates}
-            weekendDays={weekendDays}
-            onDateChange={(taskId, start, end) => void handleDateChange(taskId, start, end)}
-            onProgressChange={(taskId, progress) => void handleProgressChange(taskId, progress)}
-            onTaskClick={handleTaskClick}
-            onViewModeChange={setMode}
-          />
-
-          <GanttLegend />
         </div>
       </Card>
     </div>
