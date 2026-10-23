@@ -234,12 +234,19 @@ tbody td.c{text-align:center}
 .legend{font-size:12px;color:#6b7c8c;line-height:1.9;margin-top:10px}
 .legend b{color:#1c2b36}
 .rpt-foot{text-align:center;color:#6b7c8c;font-size:12px;padding:14px 0}
+.rpt-toolbar-screen{position:fixed;top:16px;right:20px;display:flex;gap:8px;z-index:9999;background:rgba(255,255,255,.94);border:1px solid #d9e2ea;padding:6px 10px;border-radius:8px;box-shadow:0 3px 12px rgba(0,0,0,.12);backdrop-filter:blur(4px)}
+.rpt-toolbar-screen button{border:none;border-radius:6px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:filter .15s;font-family:inherit}
+.rpt-toolbar-screen button:hover{filter:brightness(1.08)}
+.rpt-btn-print{background:#1a5e8a;color:#fff}
+.rpt-btn-dl{background:#eef3f8;color:#123c58;border:1px solid #c9d6e2!important}
+.rpt-btn-close{background:#fff;color:#6b7c8c;border:1px solid #d9e2ea!important}
 @media print{
   body{padding:0;background:#fff}
   .report{max-width:none}
   .rpt-header,.section,.dash .card,.quad{break-inside:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   thead th{position:static}
   tr{break-inside:avoid}
+  .rpt-toolbar-screen{display:none!important}
 }
 `
 
@@ -267,6 +274,11 @@ export function buildReportHtml(cfg: ReportConfig): string {
 <style>${CSS}</style>
 </head>
 <body>
+<div class="rpt-toolbar-screen">
+  <button class="rpt-btn-print" onclick="window.print()">🖨️ 打印 / 另存为 PDF</button>
+  <button class="rpt-btn-dl" onclick="downloadSelf()">💾 下载 HTML</button>
+  <button class="rpt-btn-close" onclick="window.close()">✕ 关闭</button>
+</div>
 <div class="report">
   <div class="rpt-header">
     <h1>${escapeHtml(cfg.title)}</h1>
@@ -278,6 +290,17 @@ export function buildReportHtml(cfg: ReportConfig): string {
   ${legend}
   <div class="rpt-foot">${escapeHtml(cfg.footerNote || '本报告由 Project Toolkit 自动生成')}</div>
 </div>
+<script>
+function downloadSelf(){
+  var blob=new Blob([document.documentElement.outerHTML],{type:'text/html;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(document.title||'报告')+'.html';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+</script>
 </body>
 </html>`
 }
