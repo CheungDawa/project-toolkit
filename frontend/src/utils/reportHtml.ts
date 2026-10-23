@@ -190,7 +190,7 @@ function matrixSection(sec: ReportMatrixSection): string {
   </div>`
 }
 
-const CSS = `
+export const REPORT_CSS = `
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;background:#eef2f6;color:#1c2b36;font-size:14px;padding:20px}
 .report{max-width:1200px;margin:0 auto}
@@ -250,8 +250,8 @@ tbody td.c{text-align:center}
 }
 `
 
-/** 组装完整自包含 HTML 文档 */
-export function buildReportHtml(cfg: ReportConfig): string {
+/** 生成报告正文 HTML（含头部、KPI、章节、图例、页脚，不含外部 html/body 包装与悬浮工具栏） */
+export function buildReportContent(cfg: ReportConfig): string {
   const kpi = cfg.kpi && cfg.kpi.length ? kpiCards(cfg.kpi) : ''
   const sections = cfg.sections
     .map(s =>
@@ -265,21 +265,7 @@ export function buildReportHtml(cfg: ReportConfig): string {
   const legend = cfg.legend
     ? `<div class="section"><div class="legend">${cfg.legend}</div></div>`
     : ''
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>${escapeHtml(cfg.title)}</title>
-<style>${CSS}</style>
-</head>
-<body>
-<div class="rpt-toolbar-screen">
-  <button class="rpt-btn-print" onclick="window.print()">🖨️ 打印 / 另存为 PDF</button>
-  <button class="rpt-btn-dl" onclick="downloadSelf()">💾 下载 HTML</button>
-  <button class="rpt-btn-close" onclick="window.close()">✕ 关闭</button>
-</div>
-<div class="report">
+  return `<div class="report">
   <div class="rpt-header">
     <h1>${escapeHtml(cfg.title)}</h1>
     ${cfg.subtitle ? `<div class="sub">${escapeHtml(cfg.subtitle)}</div>` : ''}
@@ -289,7 +275,27 @@ export function buildReportHtml(cfg: ReportConfig): string {
   ${sections}
   ${legend}
   <div class="rpt-foot">${escapeHtml(cfg.footerNote || '本报告由 Project Toolkit 自动生成')}</div>
+</div>`
+}
+
+/** 组装完整自包含 HTML 文档 */
+export function buildReportHtml(cfg: ReportConfig): string {
+  const content = buildReportContent(cfg)
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${escapeHtml(cfg.title)}</title>
+<style>${REPORT_CSS}</style>
+</head>
+<body>
+<div class="rpt-toolbar-screen">
+  <button class="rpt-btn-print" onclick="window.print()">🖨️ 打印 / 另存为 PDF</button>
+  <button class="rpt-btn-dl" onclick="downloadSelf()">💾 下载 HTML</button>
+  <button class="rpt-btn-close" onclick="window.close()">✕ 关闭</button>
 </div>
+${content}
 <script>
 function downloadSelf(){
   var blob=new Blob([document.documentElement.outerHTML],{type:'text/html;charset=utf-8'});
