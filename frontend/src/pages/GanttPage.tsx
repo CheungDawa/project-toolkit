@@ -1,3 +1,4 @@
+import { AimOutlined } from '@ant-design/icons'
 import {
   App,
   Button,
@@ -42,13 +43,13 @@ const SAFE_SIDE = 12000
 /** 导出图片时排除的交互性元素（今日按钮/视图下拉、弹窗、调试按钮） */
 const EXCLUDED_EXPORT_CLASSES = ['side-header', 'popup-wrapper', 'adjust']
 
-const LEGEND: { color: string; text: string }[] = [
-  { color: '#595959', text: '汇总条（父任务，按子任务区间汇总）' },
-  { color: '#52c41a', text: '已完成' },
-  { color: '#1677ff', text: '进行中' },
-  { color: '#bfbfbf', text: '未开始' },
-  { color: '#ff4d4f', text: '逾期（计划结束已过且未完成）' },
-  { color: '#722ed1', text: '里程碑' },
+const LEGEND: { color: string; border: string; text: string }[] = [
+  { color: '#1e293b', border: '#0f172a', text: '汇总条（父任务，按子任务区间汇总）' },
+  { color: '#15803d', border: '#16a34a', text: '已完成' },
+  { color: '#1d4ed8', border: '#2563eb', text: '进行中' },
+  { color: '#cbd5e1', border: '#94a3b8', text: '未开始' },
+  { color: '#b91c1c', border: '#dc2626', text: '逾期（计划结束已过且未完成）' },
+  { color: '#7c3aed', border: '#5b21b6', text: '里程碑' },
 ]
 
 function pad(value: number): string {
@@ -252,7 +253,7 @@ function GanttLegend() {
               height: 14,
               borderRadius: 3,
               background: item.color,
-              border: '1px solid rgba(0,0,0,0.15)',
+              border: `1.5px solid ${item.border}`,
             }}
           />
           {item.text}
@@ -265,8 +266,21 @@ function GanttLegend() {
             width: 14,
             height: 14,
             borderRadius: 3,
-            background: '#f5f5f5',
-            border: '1px solid rgba(0,0,0,0.15)',
+            background: '#ef4444',
+            boxShadow: '0 0 4px rgba(239, 68, 68, 0.4)',
+          }}
+        />
+        今日参考线
+      </span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 14,
+            height: 14,
+            borderRadius: 3,
+            background: '#f8fafc',
+            border: '1px solid #cbd5e1',
           }}
         />
         周末 / 节假日底纹
@@ -751,6 +765,9 @@ export default function GanttPage() {
               </Button>
             ) : null}
             {saving ? <Tag color="processing">保存中…</Tag> : null}
+            <Button icon={<AimOutlined />} onClick={() => ganttRef.current?.scrollToToday(true)}>
+              定位到今日
+            </Button>
             <Button onClick={() => void fetchData()} loading={loading}>
               刷新
             </Button>

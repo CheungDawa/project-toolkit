@@ -1,7 +1,15 @@
 import Gantt from 'frappe-gantt'
 import '../assets/frappe-gantt.css'
 import '../assets/gantt-extra.css'
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 /**
  * 任务条输入结构。与 frappe-gantt 的 task 结构保持一致，
@@ -43,6 +51,8 @@ export interface GanttViewHandle {
     /** 每列跨越的单位数：Day=1、Week=7、Month=1 */
     step: number
   } | null
+  /** 滚动视口到「今日」（smooth 默认为 true 平滑滚动） */
+  scrollToToday: (smooth?: boolean) => void
   // 注：这里曾有一个 updateTasks(patches) 用于「点对点回滚」，已删除（无调用方）。
   // 原因见 syncTaskRecordDates 的注释：库内唯一的点对点接口 update_task() 用 task._index
   // 去索引 this.bars，而 setup_tasks() 会 filter 掉非法任务，下标一旦错位就会改到别的 bar 上。
@@ -355,6 +365,48 @@ const GanttView = forwardRef<GanttViewHandle, GanttViewProps>(
     const handlersRef = useRef({ onDateChange, onProgressChange, onTaskClick, onViewModeChange })
     handlersRef.current = { onDateChange, onProgressChange, onTaskClick, onViewModeChange }
 
+    const scrollToToday = useCallback((smooth = true) => {
+      const container = containerRef.current
+      if (!container) return
+      const ganttContainer = container.querySelector<HTMLElement>('.gantt-container')
+      if (!ganttContainer) return
+
+      // ① 优先从 DOM 读取库生成的 .current-highlight 绝对位置
+      const highlight = container.querySelector<HTMLElement>('.current-highlight')
+      let todayX = highlight ? parseFloat(highlight.style.left) || highlight.offsetLeft : 0
+
+      // ② 若 DOM 尚未完全布局，利用实例时间轴度量高精度反算
+      if (!todayX && ganttRef.current) {
+        const g = ganttRef.current
+        const now = new Date()
+        const start = g.gantt_start
+        const diffMs = now.getTime() - start.getTime()
+        const diffDays = diffMs / (1000 * 60 * 60 * 24)
+        const unit = g.config.unit
+        const step = g.config.step || 1
+        const colW = g.config.column_width || 45
+        if (unit === 'month') {
+          const diffMonths =
+            (now.getFullYear() - start.getFullYear()) * 12 +
+            (now.getMonth() - start.getMonth()) +
+            now.getDate() / 31
+          todayX = (diffMonths / step) * colW
+        } else {
+          todayX = (diffDays / step) * colW
+        }
+      }
+
+      if (todayX > 0) {
+        // 定位在视口左起约 1/3 处：兼顾近期上下文与后续排期
+        const target = Math.max(0, todayX - ganttContainer.clientWidth / 3)
+        ganttContainer.scrollTo({
+          left: target,
+          behavior: smooth ? 'smooth' : 'auto',
+        })
+        scrollLeftRef.current = target
+      }
+    }, [])
+
     // 数组 props 每次渲染都是新引用，用字符串 key 参与依赖比较，避免无谓重建
     const holidayKey = holidayDates.join('|')
     const weekendKey = weekendDays.join('|')
@@ -431,7 +483,8 @@ const GanttView = forwardRef<GanttViewHandle, GanttViewProps>(
           today_button: true,
           // 渲染后滚动到今日（defaults.js:155），今日竖线由库自身绘制（index.js:696 highlight_current）
           // 仅首次挂载滚动到今日；后续重建（切换视图/刷新）保留当前位置，避免拖动后页面被拉回今日
-          scroll_to: didScrollRef.current ? undefined : 'today',
+          // 禁用 frappe-gantt 中文日期下计算出 NaN 的 scroll_to，由组件自身精准定位
+          scroll_to: undefined,
           popup_on: 'click',
           move_dependencies: true,
           // 官方 option（defaults.js:161），默认周日/周六；这里允许按项目日历覆盖
@@ -484,7 +537,13 @@ const GanttView = forwardRef<GanttViewHandle, GanttViewProps>(
 
       // 还原上次重建前的横向滚动位置（保存后重新渲染不要跳回最左侧）
       const created = container.querySelector<HTMLElement>('.gantt-container')
-      if (created && didScrollRef.current) {
+      if (!didScrollRef.current) {
+        // 首帧就绪后立即平滑/准确定位到今日
+        requestAnimationFrame(() => {
+          scrollToToday(false)
+        })
+      } else if (created) {
+        // 还原上次重建前的横向滚动位置（保存后重新渲染不要跳回最左侧）
         created.scrollLeft = scrollLeftRef.current
       }
       didScrollRef.current = true
@@ -599,8 +658,9 @@ const GanttView = forwardRef<GanttViewHandle, GanttViewProps>(
             step: g.config.step,
           }
         },
+        scrollToToday,
       }),
-      [],
+      [scrollToToday],
     )
 
     return <div ref={containerRef} className="pt-gantt-view" />

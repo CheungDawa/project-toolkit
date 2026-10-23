@@ -1,119 +1,172 @@
 /* ============================================================================
  * Project Toolkit —— frappe-gantt 增强样式
- * 说明：本文件只通过「类名」增强 frappe-gantt 渲染出的元素，不修改库的 DOM 结构。
- *       custom_class 会被 frappe-gantt 加在 bar 的分组元素上（源码依据：
- *       node_modules/frappe-gantt/src/bar.js:15-18 与 36-37，
- *       形如 <g class="bar-wrapper pt-done">），因此这里用
- *       `.gantt .bar-wrapper.<类名> .bar / .bar-progress / .bar-label` 选择器着色。
+ * 说明：本文件通过类名与 SVG 样式增强甘特图视觉体验，对齐 Monday / Linear 现代甘特规范。
  * ==========================================================================*/
 
-/* ---------- 1. 今日线：库默认只有 1px 并且颜色接近网格线，这里加粗为红色 ---------- */
+/* ---------- 1. 今日指示线与醒目标签 ---------- */
 .gantt-container .current-highlight {
   width: 2px !important;
-  background: #ff4d4f !important;
-  opacity: 0.85;
+  background: #ef4444 !important;
+  opacity: 1 !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.45);
+  z-index: 999;
 }
 
 .gantt-container .current-ball-highlight {
-  background: #ff4d4f !important;
+  background: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
+  width: 8px !important;
+  height: 8px !important;
+  z-index: 1001;
 }
 
 .gantt-container .current-date-highlight {
-  background: #ff4d4f !important;
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  border-radius: 4px;
 }
 
-/* ---------- 2. 按任务状态着色（custom_class） ---------- */
-/* 未开始 */
+.gantt-container .current-highlight::after {
+  content: "今日";
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1002;
+}
+
+/* ---------- 2. 任务胶囊条形与高对比度配色规范 ---------- */
+.gantt .bar-wrapper .bar {
+  rx: 4px;
+  ry: 4px;
+  stroke-width: 1.5;
+  transition: filter 0.15s ease;
+}
+
+.gantt .bar-wrapper .bar-progress {
+  rx: 4px;
+  ry: 4px;
+}
+
+.gantt .bar-wrapper:hover .bar {
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.16));
+}
+
+/* 未开始 (Todo)：冷灰基底 + 中灰描边 + 深灰字，清晰独立于背景网格 */
 .gantt .bar-wrapper.pt-todo .bar {
-  fill: #fafafa;
+  fill: #f1f5f9;
+  stroke: #94a3b8;
 }
 .gantt .bar-wrapper.pt-todo .bar-progress {
-  fill: #bfbfbf;
+  fill: #cbd5e1;
+}
+.gantt .bar-wrapper.pt-todo .bar-label {
+  fill: #334155;
+  font-weight: 500;
 }
 
-/* 进行中 */
+/* 进行中 (Doing)：清爽天蓝底 + 活力蓝描边 + 高饱和品牌蓝进度 */
 .gantt .bar-wrapper.pt-doing .bar {
-  fill: #e6f4ff;
+  fill: #eff6ff;
+  stroke: #2563eb;
 }
 .gantt .bar-wrapper.pt-doing .bar-progress {
-  fill: #1677ff;
+  fill: #1d4ed8;
+}
+.gantt .bar-wrapper.pt-doing .bar-label {
+  fill: #0f172a;
+  font-weight: 600;
 }
 
-/* 已完成 */
+/* 已完成 (Done)：薄荷翠绿底 + 鲜活绿描边 + 茂盛绿进度 */
 .gantt .bar-wrapper.pt-done .bar {
-  fill: #f6ffed;
+  fill: #f0fdf4;
+  stroke: #16a34a;
 }
 .gantt .bar-wrapper.pt-done .bar-progress {
-  fill: #52c41a;
+  fill: #15803d;
+}
+.gantt .bar-wrapper.pt-done .bar-label {
+  fill: #14532d;
+  font-weight: 600;
 }
 
-/* 逾期：计划结束已过且未完成 */
+/* 逾期未完成 (Overdue)：警示粉红底 + 警戒红描边 + 醒目红进度 */
 .gantt .bar-wrapper.pt-overdue .bar {
-  fill: #fff1f0;
+  fill: #fef2f2;
+  stroke: #dc2626;
 }
 .gantt .bar-wrapper.pt-overdue .bar-progress {
-  fill: #ff4d4f;
+  fill: #b91c1c;
+}
+.gantt .bar-wrapper.pt-overdue .bar-label {
+  fill: #7f1d1d;
+  font-weight: 600;
 }
 
-/* ---------- 3. 汇总条（父任务）：深色实心，与叶子任务明显区分 ---------- */
+/* ---------- 3. 汇总条（父任务）：深色高级石板灰 ---------- */
 .gantt .bar-wrapper.pt-summary .bar {
-  fill: #595959;
-  stroke: #262626;
-  stroke-width: 1;
+  fill: #1e293b;
+  stroke: #0f172a;
 }
 .gantt .bar-wrapper.pt-summary .bar-progress {
-  fill: #bfbfbf;
+  fill: #475569;
 }
 .gantt .bar-wrapper.pt-summary .bar-label {
   fill: #ffffff;
   font-weight: 600;
 }
 
-/* ---------- 4. 里程碑：紫色实心 + 虚线描边 ---------- */
-/* 说明：frappe-gantt 没有里程碑图形，这里用「零长度任务 + 专属配色」表达，
- *       名称前缀 ◆ 在 GanttPage 里拼接；不做 rotate 变形（无法在浏览器验证，
- *       SVG 元素 transform-origin 在不同浏览器下基准不同，风险过高）。 */
+/* ---------- 4. 里程碑：高贵晶石紫 + 虚线描边 ---------- */
 .gantt .bar-wrapper.pt-milestone .bar {
-  fill: #722ed1;
-  stroke: #391085;
-  stroke-width: 1;
-  stroke-dasharray: 3 2;
+  fill: #7c3aed;
+  stroke: #5b21b6;
+  stroke-dasharray: 4 2;
 }
 .gantt .bar-wrapper.pt-milestone .bar-progress {
-  fill: #9254de;
+  fill: #6d28d9;
 }
 .gantt .bar-wrapper.pt-milestone .bar-label {
   fill: #ffffff;
   font-weight: 600;
 }
 
-/* ---------- 5. 导出用容器：保证截图时不被外层滚动容器裁切 ---------- */
+/* ---------- 5. 容器与导出 ---------- */
 .pt-gantt-export {
   background: #ffffff;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 16px;
-  /* 导出截图时强制浅色变量：即使 html-to-image 克隆出的 DOM 漏出深色变量，条/进度/网格仍保持白底，避免导出全黑 */
   --g-bar-color: #ffffff;
   --g-bar-border: #ffffff;
   --g-progress-color: #dbdbdb;
   --g-row-color: #fdfdfd;
-  --g-row-border-color: #c7c7c7;
-  --g-border-color: #ebeff2;
-  --g-tick-color: #f3f3f3;
-  --g-tick-color-thick: #ededed;
-  --g-text-dark: #171717;
-  --g-text-muted: #7c7c7c;
+  --g-row-border-color: #e2e8f0;
+  --g-border-color: #f1f5f9;
+  --g-tick-color: #f1f5f9;
+  --g-tick-color-thick: #e2e8f0;
+  --g-text-dark: #0f172a;
+  --g-text-muted: #64748b;
   --g-text-light: #ffffff;
   --g-header-background: #ffffff;
-  --g-today-highlight: #ff4d4f;
-  --g-weekend-highlight-color: #f7f7f7;
-  --g-weekend-label-color: #dcdce4;
+  --g-today-highlight: #ef4444;
+  --g-weekend-highlight-color: #f8fafc;
+  --g-weekend-label-color: #cbd5e1;
 }
 
 .pt-gantt-view {
   overflow-x: auto;
   background: #ffffff;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
 }
