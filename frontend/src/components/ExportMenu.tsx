@@ -20,7 +20,7 @@ import {
 
 /** 数据导出支持的资源类型（与后端 GET /api/exports/data?resource= 对齐） */
 export type ExportResource =
-  'tasks' | 'deliverables' | 'risks' | 'issues' | 'milestones' | 'overview'
+  'tasks' | 'deliverables' | 'risks' | 'issues' | 'milestones' | 'retrospectives' | 'overview'
 
 /** 数据导出文件格式 */
 type DataFormat = 'csv' | 'xlsx' | 'json'

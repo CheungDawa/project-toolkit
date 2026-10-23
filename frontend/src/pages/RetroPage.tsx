@@ -49,7 +49,10 @@ import {
 } from '../api/retro'
 import { listDeliverables, type DeliverableItem } from '../api/stage5'
 import { listIssues, listRisks, type IssueItem, type RiskItem } from '../api/stage3'
+import { listTasks, type TaskItem } from '../api/stage2'
+import ExportMenu from '../components/ExportMenu'
 import { useProjectContext } from '../hooks/useProjectContext'
+import { buildRetroReport, type RetroActionItemReportInput } from '../utils/reportBuilders'
 
 const { Text, Title, Paragraph } = Typography
 
@@ -77,6 +80,7 @@ const CONVERT_TARGETS: { target: ConvertTarget; label: string }[] = [
 
 /** 关联实体类型元信息 */
 const LINK_TYPE_META: Record<RetroLinkType, { label: string }> = {
+  task: { label: '任务' },
   risk: { label: '风险' },
   issue: { label: '问题' },
   deliverable: { label: '交付物' },
@@ -94,20 +98,56 @@ function isActionStatus(v: string | null | undefined): v is RetroActionStatus {
   return v === 'open' || v === 'in_progress' || v === 'done' || v === 'closed'
 }
 
-/** 由关联 risk/issue/deliverable 解析展示文案（依赖页面级预拉的实体映射） */
+interface LinkInfo {
+  display: string
+  status?: string
+}
+
+/** 由关联 risk/issue/deliverable/task 解析展示文案与实时状态 */
 function describeLink(
   item: RetroItem,
   riskMap: Map<string, RiskItem>,
   issueMap: Map<string, IssueItem>,
   deliverableMap: Map<string, DeliverableItem>,
-): string | null {
+  taskMap: Map<string, TaskItem>,
+): LinkInfo | null {
   if (!item.link_type || !item.link_id) return null
-  let name = item.link_id
-  if (item.link_type === 'risk') name = riskMap.get(item.link_id)?.description ?? item.link_id
-  else if (item.link_type === 'issue') name = issueMap.get(item.link_id)?.title ?? item.link_id
-  else if (item.link_type === 'deliverable')
-    name = deliverableMap.get(item.link_id)?.name ?? item.link_id
-  return `${LINK_TYPE_META[item.link_type].label}：${name}`
+  const targetId = item.link_id
+  const typeLabel = LINK_TYPE_META[item.link_type]?.label ?? item.link_type
+  if (item.link_type === 'task') {
+    const task = taskMap.get(targetId)
+    if (!task) return { display: `${typeLabel}：${targetId}` }
+    const code = task.wbs_code ? `[${task.wbs_code}] ` : ''
+    return {
+      display: `${typeLabel}：${code}${task.name}`,
+      status: `${task.status} · 进度 ${Math.round(task.progress || 0)}%`,
+    }
+  }
+  if (item.link_type === 'risk') {
+    const risk = riskMap.get(targetId)
+    if (!risk) return { display: `${typeLabel}：${targetId}` }
+    return {
+      display: `${typeLabel}：${risk.description}`,
+      status: `${risk.level || '低'}风险 · ${risk.status}`,
+    }
+  }
+  if (item.link_type === 'issue') {
+    const issue = issueMap.get(targetId)
+    if (!issue) return { display: `${typeLabel}：${targetId}` }
+    return {
+      display: `${typeLabel}：${issue.title}`,
+      status: `${issue.severity || '一般'} · ${issue.status}`,
+    }
+  }
+  if (item.link_type === 'deliverable') {
+    const del = deliverableMap.get(targetId)
+    if (!del) return { display: `${typeLabel}：${targetId}` }
+    return {
+      display: `${typeLabel}：${del.name}`,
+      status: `提交: ${del.submit_status} · 审核: ${del.review_status}`,
+    }
+  }
+  return null
 }
 
 export default function RetroPage() {
@@ -124,7 +164,8 @@ export default function RetroPage() {
   const [items, setItems] = useState<RetroItem[]>([])
   const [itemsLoading, setItemsLoading] = useState(false)
 
-  // ---- 关联实体（用于弹窗选择 & 卡片展示名称） ----
+  // ---- 关联实体（用于弹窗选择 & 卡片展示名称与实时状态） ----
+  const [tasks, setTasks] = useState<TaskItem[]>([])
   const [risks, setRisks] = useState<RiskItem[]>([])
   const [issues, setIssues] = useState<IssueItem[]>([])
   const [deliverables, setDeliverables] = useState<DeliverableItem[]>([])
@@ -185,12 +226,14 @@ export default function RetroPage() {
     let cancelled = false
     void (async () => {
       try {
-        const [rs, iss, dels] = await Promise.all([
+        const [ts, rs, iss, dels] = await Promise.all([
+          listTasks(projectId),
           listRisks(projectId),
           listIssues(projectId),
           listDeliverables(projectId),
         ])
         if (cancelled) return
+        setTasks(ts.items ?? [])
         setRisks(rs)
         setIssues(iss)
         setDeliverables(dels)
@@ -211,7 +254,8 @@ export default function RetroPage() {
     void fetchItems()
   }, [fetchItems])
 
-  // 实体映射（卡片展示关联名称用）
+  // 实体映射（卡片展示关联名称与实时状态用）
+  const taskMap = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks])
   const riskMap = useMemo(() => new Map(risks.map(r => [r.id, r])), [risks])
   const issueMap = useMemo(() => new Map(issues.map(i => [i.id, i])), [issues])
   const deliverableMap = useMemo(() => new Map(deliverables.map(d => [d.id, d])), [deliverables])
@@ -367,8 +411,20 @@ export default function RetroPage() {
           CONVERT_TARGETS.find(t => t.target === result.entity_type)?.label ?? result.entity_type
         const ent = result.entity as Record<string, unknown>
         const name = (ent.name ?? ent.title ?? ent.id) as string
-        message.success(`已转为${label}：${name}（已自动回写）`)
+        message.success(`已转为${label}：${name}（已自动回写，截止时间已同步）`)
         await fetchItems()
+        // 后台刷新实体清单，以便卡片立即显示关联实体的实时进展
+        void Promise.all([
+          listTasks(projectId)
+            .then(r => setTasks(r.items ?? []))
+            .catch(() => {}),
+          listRisks(projectId)
+            .then(setRisks)
+            .catch(() => {}),
+          listIssues(projectId)
+            .then(setIssues)
+            .catch(() => {}),
+        ])
       } catch (err) {
         message.error(err instanceof Error ? err.message : '转换失败')
       }
@@ -379,7 +435,7 @@ export default function RetroPage() {
   // ---- 条目卡片 ----
   const renderItemCard = (item: RetroItem) => {
     const isAction = item.category === 'action'
-    const linkText = describeLink(item, riskMap, issueMap, deliverableMap)
+    const linkInfo = describeLink(item, riskMap, issueMap, deliverableMap, taskMap)
     return (
       <Card
         key={item.id}
@@ -399,11 +455,12 @@ export default function RetroPage() {
                 {ACTION_STATUS_META[item.status].label}
               </Tag>
             ) : null}
-            {linkText ? (
-              <Tag icon={<LinkOutlined />} color="blue">
-                {linkText}
+            {linkInfo ? (
+              <Tag icon={<LinkOutlined />} color={item.converted ? 'geekblue' : 'blue'}>
+                {item.converted ? `[已转] ${linkInfo.display}` : linkInfo.display}
               </Tag>
             ) : null}
+            {linkInfo?.status ? <Tag color="cyan">{linkInfo.status}</Tag> : null}
           </Space>
         </div>
         <div style={{ marginTop: 10 }}>
@@ -416,22 +473,31 @@ export default function RetroPage() {
                 <Button size="small" icon={<LinkOutlined />} onClick={() => openLink(item)}>
                   关联
                 </Button>
-                <Tooltip title="转为任务/风险/问题（自动回写新建实体）">
-                  <Button size="small" icon={<SwapOutlined />}>
-                    转
-                  </Button>
-                </Tooltip>
-                <Space size={2}>
-                  {CONVERT_TARGETS.map(t => (
-                    <Button
-                      key={t.target}
-                      size="small"
-                      onClick={() => void handleConvert(item, t.target)}
-                    >
-                      {t.label}
-                    </Button>
-                  ))}
-                </Space>
+                {item.converted ? (
+                  <Tag color="success" style={{ marginInlineEnd: 0 }}>
+                    已转化为实体
+                  </Tag>
+                ) : (
+                  <>
+                    <Tooltip title="转为任务/风险/问题（自动回写新建实体并传承截止日期）">
+                      <Button size="small" icon={<SwapOutlined />}>
+                        转
+                      </Button>
+                    </Tooltip>
+                    <Space size={2}>
+                      {CONVERT_TARGETS.map(t => (
+                        <Popconfirm
+                          key={t.target}
+                          title={`确认将此行动项转为${t.label}？`}
+                          description="将在对应台账新建实体并自动关联，截止日期将同步传承。"
+                          onConfirm={() => void handleConvert(item, t.target)}
+                        >
+                          <Button size="small">{t.label}</Button>
+                        </Popconfirm>
+                      ))}
+                    </Space>
+                  </>
+                )}
               </>
             ) : null}
           </Space>
@@ -487,21 +553,58 @@ export default function RetroPage() {
 
   return (
     <div>
-      {/* 项目信息条 */}
+      {/* 项目信息条与导出按钮 */}
       <div
         style={{
           marginBottom: 12,
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: 10,
           flexWrap: 'wrap',
         }}
       >
-        {projectContext.project ? <Tag color="geekblue">{projectContext.project.code}</Tag> : null}
-        <Title level={4} style={{ margin: 0 }}>
-          {projectContext.project?.name ?? '项目'}
-        </Title>
-        <Text type="secondary">项目复盘</Text>
+        <Space wrap align="center">
+          {projectContext.project ? (
+            <Tag color="geekblue">{projectContext.project.code}</Tag>
+          ) : null}
+          <Title level={4} style={{ margin: 0 }}>
+            {projectContext.project?.name ?? '项目'}
+          </Title>
+          <Text type="secondary">项目复盘</Text>
+        </Space>
+        {selectedRetro && (
+          <ExportMenu
+            resource="retrospectives"
+            projectId={projectId}
+            buttonText="导出复盘报告"
+            shareReport={() => {
+              const reportItems: RetroActionItemReportInput[] = items.map(it => {
+                const li = describeLink(it, riskMap, issueMap, deliverableMap, taskMap)
+                return {
+                  id: it.id,
+                  category: it.category,
+                  content: it.content,
+                  owner: it.owner,
+                  due_date: it.due_date,
+                  priority: it.priority,
+                  status: it.status ?? 'open',
+                  link_type: it.link_type,
+                  link_id: it.link_id,
+                  converted: it.converted,
+                  converted_id: it.converted_id,
+                  link_display: li?.display,
+                  link_status: li?.status,
+                }
+              })
+              return buildRetroReport(
+                projectContext.project?.name ?? '项目',
+                selectedRetro,
+                reportItems,
+              )
+            }}
+          />
+        )}
       </div>
 
       <Row gutter={16}>

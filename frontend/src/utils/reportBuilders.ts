@@ -659,3 +659,215 @@ export function buildScheduleReport(projectName: string, tasks: TaskItem[]): Rep
       '口径说明：进度取任务有效进度（父任务按子任务汇总）；「未排期」表示尚未设置计划起止，不会出现在甘特图时间轴上。',
   }
 }
+
+/* ============================ 项目复盘报告 ============================ */
+
+export interface RetroReportInput {
+  id?: string
+  title: string
+  scope: 'phase' | 'milestone' | 'sprint' | 'whole'
+  occurred_on: string
+  facilitator?: string | null
+  participants?: string[] | null
+  summary?: string | null
+  atmosphere?: string | null
+  status?: string
+}
+
+export interface RetroActionItemReportInput {
+  id: string
+  category: 'good' | 'improve' | 'action'
+  content: string
+  owner?: string | null
+  due_date?: string | null
+  priority?: 'low' | 'medium' | 'high' | null
+  status: 'open' | 'in_progress' | 'done' | 'closed'
+  link_type?: 'task' | 'risk' | 'issue' | 'deliverable' | null
+  link_id?: string | null
+  converted?: boolean
+  converted_id?: string | null
+  link_display?: string | null
+  link_status?: string | null
+}
+
+const RETRO_SCOPE_LABEL: Record<string, string> = {
+  phase: '阶段复盘',
+  milestone: '里程碑复盘',
+  sprint: '迭代复盘',
+  whole: '项目整体复盘',
+}
+
+const RETRO_ACTION_STATUS_LABEL: Record<string, string> = {
+  open: '待办',
+  in_progress: '进行中',
+  done: '已完成',
+  closed: '已关闭',
+}
+
+const RETRO_PRIO_LABEL: Record<string, string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+}
+
+/** 项目复盘报告（做得好 / 待改进 / 行动项及闭环追踪） */
+export function buildRetroReport(
+  projectName: string,
+  retro: RetroReportInput,
+  items: RetroActionItemReportInput[],
+): ReportConfig {
+  const good = items.filter(i => i.category === 'good')
+  const improve = items.filter(i => i.category === 'improve')
+  const actions = items.filter(i => i.category === 'action')
+  const actionDone = actions.filter(i => i.status === 'done' || i.status === 'closed').length
+  const convertedCount = items.filter(i => i.converted).length
+
+  const kpis: ReportKpi[] = [
+    { label: '复盘条目总数', value: items.length },
+    { label: '做得好 (Keep)', value: good.length, tone: 'p2' },
+    { label: '待改进 (Problem)', value: improve.length, tone: 'p1' },
+    { label: '行动项 (Action)', value: actions.length, tone: 'primary' },
+    {
+      label: '行动项闭环',
+      value: `${actionDone}/${actions.length}`,
+      tone: actionDone === actions.length && actions.length > 0 ? 'p2' : 'warn',
+    },
+    { label: '已转实体', value: convertedCount, tone: convertedCount > 0 ? 'primary' : 'default' },
+  ]
+
+  const sections: ReportConfig['sections'] = []
+
+  // 1. 复盘概要 / 氛围 / 参会人
+  const summaryParts: string[] = []
+  if (retro.atmosphere) {
+    summaryParts.push(
+      `<div style="margin-bottom:8px"><b>复盘氛围：</b><span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#eef3f8;color:#123c58;font-weight:600">${escapeHtml(
+        retro.atmosphere,
+      )}</span></div>`,
+    )
+  }
+  if (retro.summary && retro.summary.trim()) {
+    summaryParts.push(
+      `<div style="font-size:13px;line-height:1.8;white-space:pre-wrap;color:#2c3e50">${escapeHtml(
+        retro.summary,
+      )}</div>`,
+    )
+  }
+  if (summaryParts.length > 0) {
+    sections.push({
+      kind: 'html',
+      title: '复盘概述与总结',
+      html: `<div style="background:#fcfdfe;border:1px solid #edf2f7;border-radius:8px;padding:12px 16px">${summaryParts.join(
+        '',
+      )}</div>`,
+    })
+  }
+
+  // 2. 做得好
+  sections.push({
+    kind: 'table',
+    title: '一、做得好（继续保持 / Good）',
+    emptyText: '暂无做得好记录',
+    columns: [
+      { key: 'idx', header: '序号', align: 'center', width: 60 },
+      { key: 'content', header: '经验与亮点', align: 'left' },
+      { key: 'owner', header: '提出人/责任人', align: 'center', width: 120 },
+    ],
+    rows: good.map((g, idx) => ({
+      idx: idx + 1,
+      content: g.content,
+      owner: g.owner || '—',
+    })),
+  })
+
+  // 3. 待改进
+  sections.push({
+    kind: 'table',
+    title: '二、待改进（问题与短板 / Improve）',
+    emptyText: '暂无待改进记录',
+    columns: [
+      { key: 'idx', header: '序号', align: 'center', width: 60 },
+      { key: 'content', header: '待改进问题', align: 'left' },
+      { key: 'priority', header: '紧迫度', align: 'center', width: 90 },
+      { key: 'owner', header: '提出人/责任人', align: 'center', width: 120 },
+    ],
+    rows: improve.map((im, idx) => {
+      const p = im.priority ? RETRO_PRIO_LABEL[im.priority] || im.priority : '—'
+      const pClass = im.priority === 'high' ? 'P0' : im.priority === 'medium' ? 'P1' : 'P2'
+      return {
+        idx: idx + 1,
+        content: im.content,
+        priority: im.priority
+          ? { html: `<span class="priority ${pClass}">${escapeHtml(p)}</span>` }
+          : '—',
+        owner: im.owner || '—',
+      }
+    }),
+  })
+
+  // 4. 行动项
+  sections.push({
+    kind: 'table',
+    title: '三、行动项落地追踪（Action Items）',
+    emptyText: '暂无行动项',
+    columns: [
+      { key: 'idx', header: '序号', align: 'center', width: 60 },
+      { key: 'content', header: '行动项内容', align: 'left' },
+      { key: 'priority', header: '优先级', align: 'center', width: 80 },
+      { key: 'owner', header: '负责人', align: 'center', width: 90 },
+      { key: 'due', header: '截止日期', align: 'center', width: 110 },
+      { key: 'status', header: '状态', align: 'center', width: 80 },
+      { key: 'link', header: '转化与关联追踪', align: 'left', width: 280 },
+    ],
+    rows: actions.map((act, idx) => {
+      const p = act.priority ? RETRO_PRIO_LABEL[act.priority] || act.priority : '—'
+      const pClass = act.priority === 'high' ? 'P0' : act.priority === 'medium' ? 'P1' : 'P2'
+      const st = RETRO_ACTION_STATUS_LABEL[act.status] || act.status
+      let linkHtml = '—'
+      if (act.converted && act.link_type) {
+        const typeLabel =
+          act.link_type === 'task' ? '任务' : act.link_type === 'risk' ? '风险' : '问题'
+        const badgeColor =
+          act.link_type === 'task' ? '#1a5e8a' : act.link_type === 'risk' ? '#c0392b' : '#d97706'
+        linkHtml = `<span style="display:inline-block;padding:1px 6px;border-radius:4px;background:${badgeColor};color:#fff;font-size:11px;font-weight:600">已转${typeLabel}</span>`
+        if (act.link_display) {
+          linkHtml += ` <span style="font-weight:600">${escapeHtml(act.link_display)}</span>`
+        }
+        if (act.link_status) {
+          linkHtml += ` <span class="muted">(${escapeHtml(act.link_status)})</span>`
+        }
+      } else if (act.link_type && act.link_display) {
+        linkHtml = `<span>${escapeHtml(act.link_display)}</span>`
+        if (act.link_status) {
+          linkHtml += ` <span class="muted">(${escapeHtml(act.link_status)})</span>`
+        }
+      }
+      return {
+        idx: idx + 1,
+        content: act.content,
+        priority: act.priority
+          ? { html: `<span class="priority ${pClass}">${escapeHtml(p)}</span>` }
+          : '—',
+        owner: act.owner || '—',
+        due: act.due_date || '—',
+        status: st,
+        link: { html: linkHtml },
+      }
+    }),
+  })
+
+  const participantsStr = (retro.participants || []).join('、')
+  return {
+    title: `${projectName} · 复盘报告`,
+    subtitle: `${retro.title} · ${RETRO_SCOPE_LABEL[retro.scope] || retro.scope} · ${
+      retro.occurred_on
+    }`,
+    meta: `主持人：${retro.facilitator || '未指定'} · 参会人：${participantsStr || '全员'} · 状态：${
+      retro.status === 'published' ? '已发布' : '草稿'
+    } · 生成日期 ${new Date().toISOString().slice(0, 10)}`,
+    kpi: kpis,
+    sections,
+    legend:
+      '说明：本报告由 Project Toolkit 复盘模块生成。做得好用于经验资产沉淀，待改进用于根因分析，行动项已闭环转化至任务/风险/问题台账跟踪执行。',
+  }
+}

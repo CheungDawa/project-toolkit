@@ -25,7 +25,7 @@ export type RetroCategory = 'good' | 'improve' | 'action'
 export type RetroActionStatus = 'open' | 'in_progress' | 'done' | 'closed'
 
 /** 行动项手动关联实体类型（存为 link_type / link_id，free string 后端不限） */
-export type RetroLinkType = 'risk' | 'issue' | 'deliverable'
+export type RetroLinkType = 'task' | 'risk' | 'issue' | 'deliverable'
 
 /** 行动项转换目标（转任务 / 转风险 / 转问题，自动回写） */
 export type ConvertTarget = 'task' | 'risk' | 'issue'
