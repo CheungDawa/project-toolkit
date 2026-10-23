@@ -118,6 +118,15 @@ def _in_window(value: date | None, start: date, end: date) -> bool:
     return value is not None and start <= value <= end
 
 
+def _overlaps_window(s: date | None, e: date | None, win_start: date, win_end: date) -> bool:
+    """判定工期区间与周期窗口是否有交集（覆盖跨周/跨月进行中的长任务）。"""
+    if s is None and e is None:
+        return False
+    start_d = s or e
+    end_d = e or s
+    return start_d <= win_end and end_d >= win_start
+
+
 # ---------- 结构化报告组装 ----------
 
 
@@ -127,6 +136,7 @@ def build_report(
     period_type: str = "daily",
     start: date | None = None,
     end: date | None = None,
+    include_overview: bool = False,
 ) -> dict:
     """组装结构化报告（统一口径，供 JSON 与 Word 导出共用）。
 
@@ -170,6 +180,7 @@ def build_report(
         db.scalars(select(Deliverable).where(Deliverable.project_id == project_id)).all()
     )
 
+    today = today_local()
     task_rows = [
         {
             "id": str(t.id),
@@ -180,10 +191,13 @@ def build_report(
             "plan_start": t.plan_start.isoformat() if t.plan_start else None,
             "plan_end": t.plan_end.isoformat() if t.plan_end else None,
             "progress": float(t.progress or 0),
+            "is_overdue": bool(
+                t.status != _TASK_DONE and t.plan_end is not None and t.plan_end < today
+            ),
         }
         for t in tasks
-        if _in_window(t.plan_start, win_start, win_end)
-        or _in_window(t.plan_end, win_start, win_end)
+        if _overlaps_window(t.plan_start, t.plan_end, win_start, win_end)
+        or (t.status != _TASK_DONE and t.plan_end is not None and t.plan_end < today)
     ]
 
     milestone_rows = [
@@ -193,9 +207,13 @@ def build_report(
             "plan_date": m.plan_date.isoformat() if m.plan_date else None,
             "actual_date": m.actual_date.isoformat() if m.actual_date else None,
             "status": m.status,
+            "is_overdue": bool(
+                m.status != "已达成" and m.plan_date is not None and m.plan_date < today
+            ),
         }
         for m in milestones
         if _in_window(m.plan_date, win_start, win_end)
+        or (m.status != "已达成" and m.plan_date is not None and m.plan_date < today)
     ]
 
     open_risk_rows = [
@@ -232,10 +250,13 @@ def build_report(
         if _in_window(d.plan_date, win_start, win_end)
     ]
 
-    # overview_todos 直接复用 /api/overview/todos 的聚合逻辑（跨项目待办）
-    from app.api.overview import overview_todos
+    # overview_todos 仅在 include_overview=True 时聚合（按需查询，避免单项目报告扫描全库）
+    if include_overview:
+        from app.api.overview import overview_todos
 
-    todos = overview_todos(db=db)
+        todos = overview_todos(db=db)
+    else:
+        todos = {"milestones": [], "tasks": [], "deliverables": []}
 
     return {
         "project_id": str(project_id),

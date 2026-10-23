@@ -392,6 +392,7 @@ def get_report(
     period_type: str = Query("daily", description="daily|weekly|monthly"),
     start: date | None = Query(None, description="周期起点（ISO）；与 end 同时给出则优先"),
     end: date | None = Query(None, description="周期终点（ISO）；与 start 同时给出则优先"),
+    include_overview: bool = Query(False, description="是否包含跨项目待办汇总（按需聚合）"),
     template: str | None = Query(None, description="（预留）报告模板，本轮未使用"),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -400,7 +401,9 @@ def get_report(
     返回 sections：tasks / milestones / open_risks / open_issues / deliverables /
     overview_todos / kpi / meta，前端据此渲染。保留 text 占位供前端编辑后随导出合并。
     """
-    return report_service.build_report(db, project_id, period_type, start, end)
+    return report_service.build_report(
+        db, project_id, period_type, start, end, include_overview=include_overview
+    )
 
 
 def _render_report_doc(report: dict) -> Document:

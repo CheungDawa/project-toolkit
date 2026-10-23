@@ -24,13 +24,14 @@ from app.core.errors import AppError
 from app.export.csv_json import to_csv_bytes, to_json_bytes
 from app.export.excel import build_workbook
 from app.models.project import Project
+from app.models.retro import Retrospective, RetroActionItem
 from app.models.stage3 import Issue, Risk
 from app.models.stage5 import Deliverable
 from app.models.task import Milestone, Task
 
 router = APIRouter(prefix="/api", tags=["exports"])
 
-_RESOURCES = {"tasks", "deliverables", "risks", "issues", "milestones", "overview"}
+_RESOURCES = {"tasks", "deliverables", "risks", "issues", "milestones", "overview", "retrospectives"}
 _FORMATS = {"csv", "xlsx", "json"}
 
 
@@ -88,6 +89,19 @@ _COLUMN_DEFS: dict[str, list[dict]] = {
         {"key": "actual_date", "header": "实际日期"},
         {"key": "status", "header": "状态"},
         {"key": "description", "header": "描述"},
+    ],
+    "retrospectives": [
+        {"key": "retro_title", "header": "复盘标题"},
+        {"key": "scope", "header": "复盘范围"},
+        {"key": "occurred_on", "header": "发生日期"},
+        {"key": "category", "header": "类别"},
+        {"key": "content", "header": "内容"},
+        {"key": "priority", "header": "优先级"},
+        {"key": "owner", "header": "负责人"},
+        {"key": "due_date", "header": "截止日期"},
+        {"key": "status", "header": "状态"},
+        {"key": "converted", "header": "是否已转化"},
+        {"key": "link_type", "header": "转化类型"},
     ],
     "overview": [
         {"key": "id", "header": "项目ID"},
@@ -190,6 +204,39 @@ def _build_rows(resource: str, db: Session, project_id: UUID | None) -> list[dic
                 "description": m.description or "",
             }
             for m in mss
+        ]
+    if resource == "retrospectives":
+        items = list(
+            db.scalars(
+                select(RetroActionItem)
+                .where(RetroActionItem.project_id == project_id)
+                .order_by(RetroActionItem.created_at)
+            ).all()
+        )
+        retros = {
+            r.id: r
+            for r in db.scalars(
+                select(Retrospective).where(Retrospective.project_id == project_id)
+            ).all()
+        }
+        scope_map = {"phase": "阶段", "milestone": "里程碑", "sprint": "迭代", "whole": "项目整体"}
+        cat_map = {"good": "做得好", "improve": "待改进", "action": "行动项"}
+        status_map = {"open": "待办", "in_progress": "进行中", "done": "已完成", "closed": "已关闭"}
+        return [
+            {
+                "retro_title": retros[i.retro_id].title if i.retro_id in retros else "",
+                "scope": scope_map.get(retros[i.retro_id].scope, "") if i.retro_id in retros else "",
+                "occurred_on": _fmt_date(retros[i.retro_id].occurred_on) if i.retro_id in retros else "",
+                "category": cat_map.get(i.category, i.category),
+                "content": i.content,
+                "priority": i.priority or "",
+                "owner": i.owner or "",
+                "due_date": _fmt_date(i.due_date),
+                "status": status_map.get(i.status, i.status),
+                "converted": "是" if i.converted else "否",
+                "link_type": i.link_type or "",
+            }
+            for i in items
         ]
     # overview：跨项目汇总（复用 /api/overview 的数据结构）
     from app.api.overview import overview

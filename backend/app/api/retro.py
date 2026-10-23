@@ -23,6 +23,9 @@ from app.schemas.retro import (
     RetroActionItemCreate,
     RetroActionItemRead,
     RetroActionItemUpdate,
+    RetroConvertRequest,
+    RetroConvertResult,
+    RetroLinkType,
     RetrospectiveCreate,
     RetrospectiveRead,
     RetrospectiveUpdate,
@@ -242,26 +245,24 @@ def update_action_item(
 
 @router.post(
     "/projects/{project_id}/retrospectives/{retro_id}/action-items/{item_id}/convert",
+    response_model=RetroConvertResult,
 )
 def convert_action_item(
-    project_id: UUID, retro_id: UUID, item_id: UUID,
-    payload: dict, db: Session = Depends(get_db),
+    project_id: UUID,
+    retro_id: UUID,
+    item_id: UUID,
+    payload: RetroConvertRequest,
+    db: Session = Depends(get_db),
 ) -> dict:
     """行动项回写为 task/risk/issue：在事务内新建对应实体并回写 action_item。
 
     回写后原 action_item 保留（converted=True, converted_id/link_type/link_id 记录新实体），
     可追溯。复用 wbs_service 建任务的 wbs_code 逻辑与 risk_score 评分引擎。
+    传承截止日期（due_date）至任务计划结束或问题要求解决期限。
     """
-    from app.schemas.retro import RetroConvertRequest, RetroLinkType
-
     item = _get_item_or_404(db, item_id, retro_id, project_id)
 
-    try:
-        req = RetroConvertRequest(**payload)
-    except Exception as exc:  # noqa: BLE001 - pydantic 校验失败转业务错误
-        raise AppError(422, "invalid_target", f"target 必须是 task/risk/issue：{exc}") from None
-
-    target = req.target
+    target = payload.target
     new_entity: object
     new_id: UUID
 
@@ -271,6 +272,7 @@ def convert_action_item(
             wbs_code=str(uuid.uuid4()),  # 占位唯一，提交后 recompute 重算真实编码
             name=item.content[:200],
             owner=item.owner,
+            plan_end=item.due_date,  # 传承截止时间至计划结束日
             status="未开始",
             priority=item.priority,
             created_at=_utcnow(),
@@ -305,12 +307,14 @@ def convert_action_item(
         new_entity = risk
         new_id = risk.id
     else:  # issue
-        severity = {"low": "低", "medium": "中", "high": "高"}.get(item.priority or "", None)
+        p_val = (item.priority or "").lower()
+        severity = {"low": "低", "medium": "中", "high": "高"}.get(p_val, None)
         issue = Issue(
             project_id=project_id,
             title=item.content[:200],
             detail=item.content,
             owner=item.owner,
+            due_date=item.due_date,  # 传承解决期限
             severity=severity or None,
             created_at=_utcnow(),
             updated_at=_utcnow(),
@@ -342,7 +346,7 @@ def convert_action_item(
     return {
         "action_item": RetroActionItemRead.model_validate(item),
         "entity": entity_dict,
-        "entity_type": target.value,
+        "entity_type": target,
     }
 
 
@@ -359,6 +363,7 @@ def _entity_to_dict(target: RetroLinkType, entity: object) -> dict:
             "status": task.status,
             "priority": task.priority,
             "progress": float(task.progress or 0),
+            "plan_end": task.plan_end.isoformat() if task.plan_end else None,
         }
     if target == RetroLinkType.RISK:
         risk = entity  # type: ignore[assignment]
@@ -380,4 +385,5 @@ def _entity_to_dict(target: RetroLinkType, entity: object) -> dict:
         "owner": issue.owner,
         "severity": issue.severity,
         "status": issue.status,
+        "due_date": issue.due_date.isoformat() if issue.due_date else None,
     }
