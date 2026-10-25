@@ -921,7 +921,7 @@ def clone_tasks_from_project(
 ) -> dict:
     """从另一个项目深拷贝整棵 WBS 树，追加为目标项目的顶级任务（不覆盖已有任务）。
 
-    适用场景：电信交付项目高度同构（安防 / 云迁移 / 交调站…），新项目直接
+    适用场景：信息化/集成交付项目高度同构（安防 / 云迁移 / 软硬件部署…），新项目直接
     复用历史项目的 WBS 模板，避免逐条手搭。
 
     复制字段：name / owner / collaborators / work_hours / priority /

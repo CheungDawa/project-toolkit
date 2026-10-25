@@ -1,7 +1,7 @@
 """旧干系人管理工具数据导入 Project Toolkit。
 
-用法（在 WSL 宿主机执行，无需容器内路径）：
-    python3 scripts/import_stakeholders.py "/mnt/d/Yibin Telecom work/干系人管理_全量数据.json"
+用法（在终端或宿主机执行）：
+    python3 scripts/import_stakeholders.py "./data/stakeholders_sample.json"
 
 字段映射（旧工具 → 本系统）：
 - pos        → org        单位
